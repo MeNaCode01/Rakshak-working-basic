@@ -25,7 +25,8 @@ const SOSRequest = () => {
     });
   };
 
-  const generateAnswer = async () => {
+  const generateAnswer = async (retryCount = 0) => {
+    const MAX_RETRIES = 3;
     const languageMapping = {
       english: 'in English',
       hindi: 'in Hindi',
@@ -64,24 +65,79 @@ const SOSRequest = () => {
     };
 
     try {
+      console.log('Generating answer for language:', formData.language, `(Attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
+      console.log('Language mapping:', languageMapping[formData.language]);
+      
+      if (retryCount > 0) {
+        setAnswer(`⏳ Retrying... (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
+      }
+      
       const response = await axios.post(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyBGe74bxJu3TrJZqvVK3JpWBVXjYC-PkVc',
         {
           contents: [{
             parts: [{
-              text: `I have ${formData.estimatedTime} minutes left for the ambulance to come. Could you please guide me in detail on what steps I should follow to reduce pain or get some relief? I have this problem: ${formData.healthProblem} and ${formData.reason}. It's severe, and don't mention calling an ambulance or 911, as we have already done that and it will come after ${formData.estimatedTime}. Give response ${languageMapping[formData.language]}.`
+              text: `I have ${formData.estimatedTime} minutes left for the ambulance to come. Could you please guide me in detail on what steps I should follow to reduce pain or get some relief? I have this problem: ${formData.healthProblem} and ${formData.reason}. It's severe, and don't mention calling an ambulance or 911, as we have already done that and it will come after ${formData.estimatedTime} minutes. Give response ${languageMapping[formData.language]}.`
             }]
           }]
+        },
+        {
+          timeout: 30000, // 30 second timeout
         }
       );
-      if (response.data && response.data.candidates && response.data.candidates[0] && response.data.candidates[0].content && response.data.candidates[0].content.parts) {
-        setAnswer(response.data.candidates[0].content.parts[0].text);
+      
+      console.log('Full API response:', response.data);
+      
+      if (response.data && response.data.candidates && response.data.candidates[0]) {
+        const candidate = response.data.candidates[0];
+        
+        // Check if content was blocked
+        if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'RECITATION') {
+          console.warn('Content blocked by safety filters:', candidate.finishReason);
+          setAnswer('⚠️ The AI response was blocked for safety reasons. Please try rephrasing your health problem description or try again.');
+          return;
+        }
+        
+        if (candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text) {
+          setAnswer(candidate.content.parts[0].text);
+        } else {
+          console.error('Unexpected response structure:', candidate);
+          setAnswer('Error: Unable to generate answer. The response format was unexpected. Please try again.');
+        }
       } else {
-        setAnswer('Error: Unable to generate answer. Please try again.');
+        console.error('No candidates in response:', response.data);
+        setAnswer('Error: Unable to generate answer. Please check your internet connection and try again.');
       }
     } catch (error) {
       console.error('Error generating answer:', error);
-      setAnswer('Error: Unable to generate answer. Please try again.');
+      console.error('Error details:', error.response?.data);
+      
+      const status = error.response?.status;
+      
+      // Retry logic for temporary server errors (503, 500, 502, 504)
+      if ([500, 502, 503, 504].includes(status) && retryCount < MAX_RETRIES) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff: 1s, 2s, 4s
+        console.log(`Server error ${status}. Retrying in ${delay}ms...`);
+        setAnswer(`⏳ Server is busy (Error ${status}). Retrying in ${delay/1000} seconds... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        
+        setTimeout(() => {
+          generateAnswer(retryCount + 1);
+        }, delay);
+        return;
+      }
+      
+      // Handle specific error codes
+      if (status === 429) {
+        setAnswer('⚠️ API rate limit exceeded. Please wait a minute and try again.');
+      } else if (status === 403) {
+        setAnswer('⚠️ API key issue. Please contact support.');
+      } else if ([500, 502, 503, 504].includes(status)) {
+        setAnswer(`⚠️ AI service is temporarily unavailable (Error ${status}). Please try again in a few moments. The ambulance is still on the way!`);
+      } else if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
+        setAnswer('⚠️ Network error or timeout. Please check your internet connection and try again.');
+      } else {
+        setAnswer('⚠️ Unable to generate AI guidance at this moment. Please follow basic first aid procedures while waiting for the ambulance.');
+      }
     }
   };
 
