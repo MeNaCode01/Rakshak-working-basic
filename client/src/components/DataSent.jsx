@@ -168,7 +168,7 @@ import { useContract, useAddress, useContractRead } from "@thirdweb-dev/react";
 
 const DataSent = () => {
   // Use environment variable for contract address
-  const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0x4F6E7C39E54DA42feBA978D7441335a36802A15c";
+  const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
   const { contract, isLoading } = useContract(CONTRACT_ADDRESS);
   const address = useAddress();
   const [msg, setMsg] = useState([]);

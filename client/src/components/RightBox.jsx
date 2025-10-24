@@ -12,7 +12,7 @@ import { ankle } from "../assets/index.js";
 const web3 = new Web3(window.ethereum);
 
 // Use environment variable for contract address (update after deployment)
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0x4F6E7C39E54DA42feBA978D7441335a36802A15c";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
 
 export const RightBox = () => {
   const [dip, setDip] = useState(false);
@@ -77,14 +77,19 @@ export const RightBox = () => {
         axios.post("http://localhost:5001/share", { fileData: f })
           .then(async (res) => {
             console.log("IPFS Upload Response:", res);
+            // Backend returns Pinata response with IpfsHash
             const cid = res.data.IpfsHash;
-            const lastValue = cid.substring(cid.lastIndexOf("/") + 1);
-            console.log("IPFS CID:", lastValue);
+            
+            if (!cid) {
+              throw new Error("No IPFS CID returned from upload");
+            }
+            
+            console.log("IPFS CID:", cid);
             console.log("Sender:", sender, "Receiver:", recieverAddress);
             
             alert("⏳ Uploading to blockchain... Please confirm the transaction in MetaMask!");
             
-            const data = await addFileToIPFS({ args: [sender, recieverAddress, lastValue] });
+            const data = await addFileToIPFS({ args: [sender, recieverAddress, cid] });
             console.log("Blockchain transaction:", data);
             
             localStorage.removeItem("status");
@@ -92,7 +97,7 @@ export const RightBox = () => {
             setReceiverAddress('');
             setDip(false);
             
-            alert("✅ Document successfully shared! IPFS CID: " + lastValue);
+            alert("✅ Document successfully shared! IPFS CID: " + cid);
           })
           .catch(err => {
             console.error("Upload error:", err);
