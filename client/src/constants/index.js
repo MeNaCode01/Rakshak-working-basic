@@ -49,6 +49,11 @@ export const navigation = [
     url: "/digilocker",
   },
   {
+    id: "3",
+    title: "🚨 Voice Emergency",
+    url: "/miclistener",
+  },
+  {
     id: "4",
     title: "Workstation",
     url: "/workstation",
