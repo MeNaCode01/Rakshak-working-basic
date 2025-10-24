@@ -53,21 +53,25 @@ const router = createBrowserRouter(
   )
 )
 
-//XDC
+//Sepolia Testnet
 const customChain = {
-  chainId: 51, 
-  rpc: ["https://rpc.apothem.network"], 
+  chainId: 11155111, 
+  rpc: [
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://rpc2.sepolia.org",
+    "https://sepolia.gateway.tenderly.co"
+  ], 
 
   nativeCurrency: {
     decimals: 18,
-    name: "XDC",
-    symbol: "XDC",
+    name: "Sepolia ETH",
+    symbol: "ETH",
   },
-  shortName: "xdc-testnet", // Display value shown in the wallet UI
-  slug: "xinfin-testnet", // Display value shown in the wallet UI
+  shortName: "sepolia", // Display value shown in the wallet UI
+  slug: "sepolia", // Display value shown in the wallet UI
   testnet: true, // Boolean indicating whether the chain is a testnet or mainnet
-  chain: "XinFin", // Name of the network
-  name: "XinFin Apothem Testnet", // Name of the network
+  chain: "Ethereum", // Name of the network
+  name: "Sepolia Testnet", // Name of the network
 };
 
 

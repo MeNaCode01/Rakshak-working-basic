@@ -39,7 +39,7 @@ if selected == 'Diabetes Prediction':
     with col1:
         Pregnancies = st.text_input("Number of Pregnancies")
     with col2:
-        Glucose = st.text_input("Glucose Level")
+        Glucose = st.text_input("Fasting Blood Glucose Level")
     with col3:
         BloodPressure = st.text_input("BloodPressure Value")
     with col1:

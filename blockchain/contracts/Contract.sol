@@ -29,8 +29,14 @@ contract VoteMain {
         _;
     }
 
-    function addFileToIPFS(address _sender, address _receiver, string memory _cid) internal {
-        require(msg.sender != _receiver);
+    function addFileToIPFS(address _sender, address _receiver, string memory _cid) public {
+        require(_sender == msg.sender, "Sender must be the transaction caller");
+        dataHolder[_sender].push(sharedWith(_cid,_receiver,bytes32(block.timestamp)));
+        emit addedFileToIPFS(_sender, _receiver, _cid);
+    }
+    
+    // Internal function for cross-chain calls
+    function _addFileToIPFS(address _sender, address _receiver, string memory _cid) internal {
         dataHolder[_sender].push(sharedWith(_cid,_receiver,bytes32(block.timestamp)));
         emit addedFileToIPFS(_sender, _receiver, _cid);
     }
@@ -44,7 +50,7 @@ contract VoteMain {
         (uint256 callType, bytes memory _data) = abi.decode(_body, (uint256, bytes));
         if(callType == 1){
             (address _senderid, address _receiver, string memory _cid) = abi.decode(_data, (address, address, string));
-            addFileToIPFS(_senderid, _receiver, _cid);
+            _addFileToIPFS(_senderid, _receiver, _cid);
         }
     }
     receive() external payable{}

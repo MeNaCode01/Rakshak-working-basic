@@ -11,10 +11,12 @@ import { ankle } from "../assets/index.js";
 
 const web3 = new Web3(window.ethereum);
 
-const cAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
+// Use environment variable for contract address (update after deployment)
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0x4F6E7C39E54DA42feBA978D7441335a36802A15c";
+
 export const RightBox = () => {
   const [dip, setDip] = useState(false);
-  const { contract } = useContract("0x4F6E7C39E54DA42feBA978D7441335a36802A15c");
+  const { contract } = useContract(CONTRACT_ADDRESS);
   const { mutateAsync: addFileToIPFS, isLoading } = useContractWrite(contract, 'addFileToIPFS');
 
   const [fileData, setFileData] = React.useState(null);
@@ -36,17 +38,32 @@ export const RightBox = () => {
   const upload = async (event) => {
     console.log("upload event")
     event.preventDefault();
+    
+    // Check if wallet is connected
+    if (!sender) {
+      return alert("❌ Please connect your MetaMask wallet first!");
+    }
+    
+    // Check wallet balance
     const balance = await web3.eth.getBalance(sender);
-
     if (balance === 0n) {
-      return alert("Your Wallet has no funds!");
+      return alert("❌ Your wallet has no funds! You need Sepolia ETH to pay for gas fees.");
     }
+    
+    // Check if file is uploaded
+    if (fileData === null || fileData.length === 0) {
+      return alert("❌ Please upload a file first!");
+    }
+    
+    // Check if receiver address is verified
     const isValid = localStorage.getItem("status");
-    if (fileData === null) {
-      return alert("Please upload a file");
+    if (!isValid || isValid !== "verified") {
+      return alert("❌ Please enter and verify the receiver wallet address first!");
     }
-    if (!isValid) {
-      return alert("Please enter a wallet address!");
+    
+    // Check if receiver address is set
+    if (!recieverAddress || recieverAddress.length === 0) {
+      return alert("❌ Please enter a receiver wallet address!");
     }
 
     if (fileData.length > 0) {
@@ -57,20 +74,29 @@ export const RightBox = () => {
         const f = fileEvent.target.result;
         setFileData(f);
 
-        axios.post("http://localhost:3000/share", { fileData: f })
+        axios.post("http://localhost:5001/share", { fileData: f })
           .then(async (res) => {
-            console.log(res);
+            console.log("IPFS Upload Response:", res);
             const cid = res.data.IpfsHash;
-            // Extract the last value after the last slash
             const lastValue = cid.substring(cid.lastIndexOf("/") + 1);
-            console.log(cid);
-            console.log("Last value:", lastValue);
-            console.log(sender, recieverAddress);
+            console.log("IPFS CID:", lastValue);
+            console.log("Sender:", sender, "Receiver:", recieverAddress);
+            
+            alert("⏳ Uploading to blockchain... Please confirm the transaction in MetaMask!");
+            
             const data = await addFileToIPFS({ args: [sender, recieverAddress, lastValue] });
-            console.log(data);
+            console.log("Blockchain transaction:", data);
+            
+            localStorage.removeItem("status");
+            setFileData(null);
+            setReceiverAddress('');
+            setDip(false);
+            
+            alert("✅ Document successfully shared! IPFS CID: " + lastValue);
           })
           .catch(err => {
-            console.log(err);
+            console.error("Upload error:", err);
+            alert("❌ Upload failed: " + (err.message || "Unknown error"));
           })
       };
       reader.readAsDataURL(fileData[0]);
@@ -79,16 +105,22 @@ export const RightBox = () => {
 
   const checkValidAddress = () => {
     try {
+      if (!recieverAddress || recieverAddress.length === 0) {
+        alert("Please enter a receiver wallet address!");
+        return;
+      }
+      
       const isValid = isValidChecksumAddress(recieverAddress);
       if (isValid) {
-        localStorage.setItem("status", true);
-        alert("Address verified!!");
+        localStorage.setItem("status", "verified");
+        alert("✅ Receiver address verified successfully!");
       }
       else {
-        alert("Please verify receiver address!");
+        alert("❌ Invalid Ethereum address! Please check and try again.");
       }
     } catch (error) {
       console.log(error);
+      alert("❌ Invalid address format! Make sure it starts with 0x and is 42 characters long.");
     }
   }
 
@@ -103,50 +135,55 @@ export const RightBox = () => {
   };
 
   return (
-    <div className="w-1/2 h-[45rem] mb-5 bg-stone-900 p-2 rounded-md">
-      <div className="flex gap-2">
-        <input type="text" onChange={(e) => { setReceiverAddress(e.target.value) }} className="w-full p-3 font-code rounded-md" placeholder="Reciever Id" />
+    <div className="w-1/2 h-auto mb-5 bg-stone-900 p-4 rounded-md relative">
+      <div className="flex gap-2 mb-4">
+        <input 
+          type="text" 
+          value={recieverAddress}
+          onChange={(e) => { setReceiverAddress(e.target.value) }} 
+          className="w-full p-3 font-code rounded-md text-black" 
+          placeholder="Enter Receiver Wallet Address (0x...)" 
+        />
         <Button onClick={checkValidAddress}>Verify</Button>
       </div>
-      <div
-        className="w-full h-[580px] -mx-2 my-3"
-        crosses
-        customPaddings
-        id="data"
-      >
-        <div className="container">
-          <Dragendrop onFileData={handleFileData} />
-        </div>
-        <div className="flex items-center mt-4 ml-14">
-      <input
+      
+      <div className="w-full mb-4">
+        <Dragendrop onFileData={handleFileData} />
+      </div>
+      
+      <div className="flex items-center mb-4 ml-2">
+        <input
           type="checkbox"
           id="action"
           name="action"
           className="appearance-none w-5 h-5 bg-gray-300 rounded-md checked:bg-blue-600 checked:border-transparent focus:outline-none transition duration-200 cursor-pointer"
-          onClick={promp}
-      />
-      <label htmlFor="action" className="ml-2 text-white text-sm cursor-pointer">
-          Scramble
-      </label>
-</div>
+          onChange={(e) => setDip(e.target.checked)}
+        />
+        <label htmlFor="action" className="ml-2 text-white text-sm cursor-pointer">
+          Scramble Document (Optional)
+        </label>
       </div>
-      <div className="w-full flex flex-col gap-4">
-        <Button onClick={upload} className="w-full content-end flex">Send</Button>
-        <div>
-          <select value={selectedOption} onChange={handleChange}>
-            <option value="">Select an option</option>
-            {options.map((option, index) => (
-              <option className="text-white" key={index} value={option.id}>{option.cid}</option>
-            ))}
-          </select>
-          {selectedOption && <p>You selected: {selectedOption}</p>}
-        </div>
-      </div>
+
       {dip && (
-        <div className="w-80 h-80">
-          <img src={ankle} alt="" />
+        <div className="mb-4 p-4 bg-zinc-800 rounded-md">
+          <p className="text-yellow-400 text-sm mb-2">⚠️ Document will be scrambled before upload</p>
+          <img src={ankle} alt="Scramble visualization" className="w-full h-auto max-w-xs mx-auto" />
         </div>
       )}
+      
+      <div className="w-full flex flex-col gap-3">
+        <Button 
+          onClick={upload} 
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading ? "Uploading to Blockchain..." : "Send Document"}
+        </Button>
+        
+        <div className="text-xs text-gray-400 text-center">
+          <p>Current wallet: {sender ? `${sender.slice(0, 6)}...${sender.slice(-4)}` : "Not connected"}</p>
+        </div>
+      </div>
     </div>
   )
 }
