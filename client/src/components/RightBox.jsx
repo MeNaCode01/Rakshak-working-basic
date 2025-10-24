@@ -22,6 +22,8 @@ export const RightBox = () => {
   const [fileData, setFileData] = React.useState(null);
   const [data, setData] = React.useState("");
   const [recieverAddress, setReceiverAddress] = React.useState('');
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   const sender = useAddress();
 
@@ -67,12 +69,16 @@ export const RightBox = () => {
     }
 
     if (fileData.length > 0) {
+      setIsUploading(true);
+      setUploadProgress('📤 Step 1/3: Reading file...');
       localStorage.removeItem("status");
       const reader = new FileReader();
 
       reader.onload = function (fileEvent) {
         const f = fileEvent.target.result;
         setFileData(f);
+
+        setUploadProgress('☁️ Step 2/3: Uploading to IPFS...');
 
         axios.post("http://localhost:5001/share", { fileData: f })
           .then(async (res) => {
@@ -87,20 +93,34 @@ export const RightBox = () => {
             console.log("IPFS CID:", cid);
             console.log("Sender:", sender, "Receiver:", recieverAddress);
             
-            alert("⏳ Uploading to blockchain... Please confirm the transaction in MetaMask!");
+            setUploadProgress(`✅ IPFS Upload Complete! CID: ${cid.substring(0, 10)}...`);
+            
+            // Wait a moment to show IPFS success
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            setUploadProgress('⛓️ Step 3/3: Saving to blockchain... Confirm in MetaMask!');
             
             const data = await addFileToIPFS({ args: [sender, recieverAddress, cid] });
             console.log("Blockchain transaction:", data);
+            
+            setUploadProgress('✅ Success! Document shared on blockchain!');
+            
+            // Wait to show success message
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             localStorage.removeItem("status");
             setFileData(null);
             setReceiverAddress('');
             setDip(false);
+            setIsUploading(false);
+            setUploadProgress('');
             
-            alert("✅ Document successfully shared! IPFS CID: " + cid);
+            alert(`✅ Document successfully shared!\n\nIPFS CID: ${cid}\nReceiver: ${recieverAddress}\n\nGo to "Sent" tab and click Refresh to see it!`);
           })
           .catch(err => {
             console.error("Upload error:", err);
+            setUploadProgress('❌ Upload failed!');
+            setIsUploading(false);
             alert("❌ Upload failed: " + (err.message || "Unknown error"));
           })
       };
@@ -176,13 +196,24 @@ export const RightBox = () => {
         </div>
       )}
       
+      {/* Progress Indicator */}
+      {isUploading && (
+        <div className="mb-4 bg-blue-900 border border-blue-500 text-white px-4 py-3 rounded-lg shadow-lg">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            <span className="font-semibold">Processing...</span>
+          </div>
+          <p className="text-sm">{uploadProgress}</p>
+        </div>
+      )}
+      
       <div className="w-full flex flex-col gap-3">
         <Button 
           onClick={upload} 
           className="w-full"
-          disabled={isLoading}
+          disabled={isLoading || isUploading}
         >
-          {isLoading ? "Uploading to Blockchain..." : "Send Document"}
+          {isUploading ? "⏳ Uploading..." : isLoading ? "Processing..." : "Send Document"}
         </Button>
         
         <div className="text-xs text-gray-400 text-center">

@@ -91,10 +91,12 @@ const UploadButton = () => {
   const { mutateAsync : addFileToIPFS, isLoading } = useContractWrite(contract,'addFileToIPFS');
 
   const [files, setFiles] = useState([]);
-    const [drop, setDrop] = useState(false);
-    const [isOpen, setIsOpen] = useState(false);
-    const [fileData,setfileData] = useState(null);
-    const inputRef = useRef();
+  const [drop, setDrop] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [fileData,setfileData] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const inputRef = useRef();
 
     const handleDragOver = (event) => {
         event.preventDefault();
@@ -195,40 +197,63 @@ const UploadButton = () => {
     }
 
     if (files.length > 0) {
+      setIsUploading(true);
+      setUploadProgress('📤 Step 1/3: Reading file...');
       console.log("Starting upload process...")
-          const reader = new FileReader();
+      
+      const reader = new FileReader();
 
-          reader.onload = function (fileEvent) {
-            const f = fileEvent.target.result;
-            setfileData(f);
-            console.log(fileData);
+      reader.onload = function (fileEvent) {
+        const f = fileEvent.target.result;
+        setfileData(f);
+        console.log(fileData);
 
-            // Upload to IPFS backend on port 5001
-            // backend exposes POST /share
-            axios.post("http://localhost:5001/share", { fileData : f})
-            .then(async (res) => {
-              // Backend returns Pinata response with IpfsHash
-              const cid = res.data.IpfsHash;
-              console.log("IPFS CID:", cid);
-              console.log("Sender:", sender);
-              
-              if (!cid) {
-                throw new Error("No CID returned from IPFS upload");
-              }
-              
-              // Call smart contract with sender and receiver (self-upload, so sender = receiver)
-              const data = await addFileToIPFS({ args: [sender, sender, cid] });
-              console.log("Transaction:", data);
-              alert("Document uploaded successfully to blockchain!");
-              setIsOpen(false);
-              setFiles([]);
-            })
-            .catch(err => {
-              console.error("Upload error:", err);
-              console.error("Error response:", err.response?.data);
-              const errorMsg = err.response?.data?.error || err.message || "Unknown error occurred";
-              alert("Failed to upload document: " + errorMsg);
-            })
+        setUploadProgress('☁️ Step 2/3: Uploading to IPFS...');
+        
+        // Upload to IPFS backend on port 5001
+        // backend exposes POST /share
+        axios.post("http://localhost:5001/share", { fileData : f})
+        .then(async (res) => {
+          // Backend returns Pinata response with IpfsHash
+          const cid = res.data.IpfsHash;
+          console.log("IPFS CID:", cid);
+          console.log("Sender:", sender);
+          
+          if (!cid) {
+            throw new Error("No CID returned from IPFS upload");
+          }
+          
+          setUploadProgress(`✅ IPFS Upload Complete! CID: ${cid.substring(0, 10)}...`);
+          
+          // Wait a moment to show IPFS success
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          setUploadProgress('⛓️ Step 3/3: Saving to blockchain... Confirm in MetaMask!');
+          
+          // Call smart contract with sender and receiver (self-upload, so sender = receiver)
+          const data = await addFileToIPFS({ args: [sender, sender, cid] });
+          console.log("Transaction:", data);
+          
+          setUploadProgress('✅ Success! Document saved to blockchain!');
+          
+          // Wait to show success message
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          setIsUploading(false);
+          setUploadProgress('');
+          setIsOpen(false);
+          setFiles([]);
+          
+          alert("✅ Document uploaded successfully!\n\nIPFS CID: " + cid + "\n\nGo to Dashboard and click 'Refresh Documents' to see it!");
+        })
+        .catch(err => {
+          console.error("Upload error:", err);
+          console.error("Error response:", err.response?.data);
+          const errorMsg = err.response?.data?.error || err.message || "Unknown error occurred";
+          setUploadProgress('❌ Upload failed!');
+          setIsUploading(false);
+          alert("Failed to upload document: " + errorMsg);
+        })
           };
           reader.readAsDataURL(files[0]);
         }
@@ -284,10 +309,33 @@ const handleClose = () => {
                     </div>
                 </div>
             )}
+            
+            {/* Progress Indicator */}
+            {isUploading && (
+              <div className="bg-blue-900 border border-blue-500 text-white px-6 py-4 rounded-lg shadow-lg min-w-[20rem] text-center">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                  <span className="font-semibold">Uploading...</span>
+                </div>
+                <p className="text-sm">{uploadProgress}</p>
+              </div>
+            )}
+            
             <div className='flex justify-between w-[18rem]'>
-            <button onClick={uploads} className="rounded-md bg-orange-700 hover:bg-orange-500 hover:border-[1px] p-3"> submit
+            <button 
+              onClick={uploads} 
+              disabled={isUploading}
+              className={`rounded-md p-3 ${isUploading ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-500 hover:border-[1px]'}`}
+            > 
+              {isUploading ? '⏳ Uploading...' : 'Submit'}
             </button>
-            <button onClick={handleClose} className="rounded-md bg-orange-700 hover:bg-orange-500 hover:border-[1px] text-white p-3">Close</button> 
+            <button 
+              onClick={handleClose} 
+              disabled={isUploading}
+              className={`rounded-md text-white p-3 ${isUploading ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-500 hover:border-[1px]'}`}
+            >
+              Close
+            </button> 
             </div>
           
         </div>
