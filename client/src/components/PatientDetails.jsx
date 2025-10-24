@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
 import Section from './Section';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import {
     FaUser, FaBirthdayCake, FaTransgender, FaTint, FaAllergies, FaDiagnoses, FaProcedures,
-    FaTemperatureHigh, FaHeartbeat, FaLungs, FaWeight
+    FaTemperatureHigh, FaHeartbeat, FaLungs, FaWeight, FaDownload
 } from 'react-icons/fa';
 import { GiThermometerScale } from 'react-icons/gi';
 
@@ -20,6 +22,25 @@ const PatientDetails = () => {
     });
     const [doctorNotes, setDoctorNotes] = useState('');
     const [submittedData, setSubmittedData] = useState(null);
+    const certificateRef = useRef(null);
+
+    const downloadCertificate = async () => {
+        const element = certificateRef.current;
+        const canvas = await html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+        });
+        
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgWidth = 210; // A4 width in mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+        pdf.save(`${patient.patientName}-medical-certificate.pdf`);
+    };
 
     useEffect(() => {
         const fetchPatient = async () => {
@@ -53,11 +74,13 @@ const PatientDetails = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await axios.post(`http://localhost:3000/patients/${id}`, { ...formData, doctorNotes });
+            const response = await axios.put(`http://localhost:3000/patients/${id}`, { ...formData, doctorNotes });
+            setPatient(response.data);
             setSubmittedData({ ...formData, doctorNotes });
             alert('Patient details updated successfully');
         } catch (error) {
             console.error('Error updating patient details:', error);
+            alert('Failed to update patient details');
         }
     };
 
@@ -116,7 +139,7 @@ const PatientDetails = () => {
                         rows={6}
                     />
                 </div>
-                <div className="flex justify-center">
+                <div className="flex justify-center mb-8">
                     <button
                         type="submit"
                         className="bg-purple-500 text-white py-2 px-4 rounded-lg shadow-lg hover:bg-purple-700 transition duration-200"
@@ -150,11 +173,20 @@ const PatientDetails = () => {
                 </div>
             )}
 
-            <div className="bg-white p-8 rounded-lg shadow-lg max-w-4xl w-full border-4 border-purple-500 mt-8">
+            <div className="mb-8 flex justify-center mt-8">
+                <button
+                    onClick={downloadCertificate}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg flex items-center gap-2 transition duration-200"
+                >
+                    <FaDownload /> Download Medical Certificate
+                </button>
+            </div>
+
+            <div ref={certificateRef} className="bg-white p-8 rounded-lg shadow-lg max-w-4xl w-full border-4 border-purple-500 mt-8">
                 <div className="text-center mb-6">
                     <h2 className="text-4xl font-bold text-purple-700">Medical Record Certificate</h2>
-                    <p className="text-lg text-purple-500">Hospital Name</p>
-                    <p className="text-sm text-purple-400">Hospital Address</p>
+                    <p className="text-lg text-purple-500">SRM Hospital</p>
+                    <p className="text-sm text-purple-400">Irungalur, Tiruchirappalli, 621105</p>
                 </div>
                 <div className="border-t border-b border-gray-300 py-6 mb-6">
                     <h3 className="text-2xl font-bold mb-4 text-purple-600">Patient Records</h3>

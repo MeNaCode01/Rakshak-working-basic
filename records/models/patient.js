@@ -30,7 +30,37 @@ const patientSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-}, { timestamps: true });
+  roomTemperature: {
+    type: String,
+    default: '',
+    required: false,
+  },
+  bodyTemperature: {
+    type: String,
+    default: '',
+    required: false,
+  },
+  oxygenLevel: {
+    type: String,
+    default: '',
+    required: false,
+  },
+  bmi: {
+    type: String,
+    default: '',
+    required: false,
+  },
+  heartRate: {
+    type: String,
+    default: '',
+    required: false,
+  },
+  doctorNotes: {
+    type: String,
+    default: '',
+    required: false,
+  },
+}, { timestamps: true, strict: false });
 
 const Patient = mongoose.model('Patient', patientSchema);
 

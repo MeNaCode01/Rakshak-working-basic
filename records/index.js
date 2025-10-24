@@ -183,6 +183,36 @@ app.get('/patients/:id', async (req, res) => {
   }
 });
 
+app.put('/patients/:id', async (req, res) => {
+  const { id } = req.params;
+  const updateData = {};
+  
+  // Only add fields that are provided in the request
+  if (req.body.roomTemperature !== undefined) updateData.roomTemperature = req.body.roomTemperature;
+  if (req.body.bodyTemperature !== undefined) updateData.bodyTemperature = req.body.bodyTemperature;
+  if (req.body.oxygenLevel !== undefined) updateData.oxygenLevel = req.body.oxygenLevel;
+  if (req.body.bmi !== undefined) updateData.bmi = req.body.bmi;
+  if (req.body.heartRate !== undefined) updateData.heartRate = req.body.heartRate;
+  if (req.body.doctorNotes !== undefined) updateData.doctorNotes = req.body.doctorNotes;
+  
+  try {
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: false }
+    );
+
+    if (!updatedPatient) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+
+    res.status(200).json(updatedPatient);
+  } catch (error) {
+    console.error('Error updating patient:', error);
+    res.status(500).json({ error: 'Failed to update patient', details: error.message });
+  }
+});
+
 app.get('/patientsdashboard', async (req, res) => {
   try {
     const femalePatientsCount = await Patient.countDocuments({ gender: 'female' });
