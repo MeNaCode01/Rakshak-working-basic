@@ -183,8 +183,19 @@ const UploadButton = () => {
     event.preventDefault();
     console.log(files.length);
 
+    // Validation
+    if (!sender) {
+      alert("Please connect your wallet first!");
+      return;
+    }
+
+    if (files.length === 0) {
+      alert("Please select a file to upload");
+      return;
+    }
+
     if (files.length > 0) {
-      console.log("I am in")
+      console.log("Starting upload process...")
           const reader = new FileReader();
 
           reader.onload = function (fileEvent) {
@@ -196,9 +207,14 @@ const UploadButton = () => {
             // backend exposes POST /share
             axios.post("http://localhost:5001/share", { fileData : f})
             .then(async (res) => {
-              const cid = res.data.cid;
+              // Backend returns Pinata response with IpfsHash
+              const cid = res.data.IpfsHash;
               console.log("IPFS CID:", cid);
               console.log("Sender:", sender);
+              
+              if (!cid) {
+                throw new Error("No CID returned from IPFS upload");
+              }
               
               // Call smart contract with sender and receiver (self-upload, so sender = receiver)
               const data = await addFileToIPFS({ args: [sender, sender, cid] });
@@ -209,7 +225,9 @@ const UploadButton = () => {
             })
             .catch(err => {
               console.error("Upload error:", err);
-              alert("Failed to upload document: " + err.message);
+              console.error("Error response:", err.response?.data);
+              const errorMsg = err.response?.data?.error || err.message || "Unknown error occurred";
+              alert("Failed to upload document: " + errorMsg);
             })
           };
           reader.readAsDataURL(files[0]);

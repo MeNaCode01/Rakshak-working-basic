@@ -129,11 +129,16 @@ app.get('/img/:cid', async (req, res) => {
 
 app.post('/share', async (req, res) => {
     try {
-        console.log("/share");
+        console.log("/share endpoint called");
+        
+        if (!req.body.fileData) {
+            return res.status(400).json({ error: 'No file data provided' });
+        }
+        
         const base64Data = req.body.fileData;
         const matches = base64Data.match(/^data:(.+);base64,(.+)$/);
         if (!matches || matches.length !== 3) {
-            throw new Error('Invalid base64 data format.');
+            return res.status(400).json({ error: 'Invalid base64 data format' });
         }
         const [, mimeType, base64EncodedData] = matches;
         const fileExtension = mimeType.split('/')[1];
@@ -143,11 +148,17 @@ app.post('/share', async (req, res) => {
         fs.writeFileSync(fileName, imageData);
 
         const result = await addFileToIPFS(imageData);
-        console.log(result);
+        console.log("IPFS upload result:", result);
+        
+        if (!result || !result.IpfsHash) {
+            return res.status(500).json({ error: 'Failed to upload to IPFS' });
+        }
+        
         return res.json(result);
         
     } catch (error) {
-        console.error('Error processing request:', error);
+        console.error('Error processing /share request:', error);
+        return res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 });
 
