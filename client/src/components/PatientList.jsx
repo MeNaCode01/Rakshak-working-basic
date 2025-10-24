@@ -19,12 +19,15 @@ const PatientList = () => {
       }
     };
     fetchPatients();
+
+    // Refresh every 10 seconds for real-time updates (reduced frequency to avoid QR regeneration spam)
+    const interval = setInterval(fetchPatients, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const generateQRCodeData = (patient) => {
-    const url = `http://localhost:5173/patient/${patient._id}`;
-    console.log('QR Code URL for patient:', patient.patientName, '→', url);
-    return url;
+    return `http://localhost:5173/patient/${patient._id}`;
   };
 
   const downloadQRCode = async (id) => {

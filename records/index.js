@@ -220,7 +220,7 @@ app.get('/patientsdashboard', async (req, res) => {
     const binaryPatientsCount = await Patient.countDocuments({ gender: 'non-binary' });
     const otherPatientsCount = await Patient.countDocuments({ gender: 'other' });
 
-    const above18Count = await Patient.countDocuments({ age: { $gt: 18 } });
+    const below18Count = await Patient.countDocuments({ age: { $lt: 18 } });
     const from18to40Count = await Patient.countDocuments({ age: { $gte: 18, $lte: 40 } });
     const above40Count = await Patient.countDocuments({ age: { $gt: 40 } });
 
@@ -230,7 +230,7 @@ app.get('/patientsdashboard', async (req, res) => {
       otherPatients: otherPatientsCount,
       nonPatients: binaryPatientsCount,
       ageCategories: {
-        above18: above18Count,
+        below18: below18Count,
         from18to40: from18to40Count,
         above40: above40Count,
       },

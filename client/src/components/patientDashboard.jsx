@@ -33,7 +33,8 @@ const PatientDashboard = ({ setTotalPatients, setTotalAppointments }) => {
         };
         fetchStatusData();
 
-        const interval = setInterval(fetchStatusData, 8000);
+        // Refresh every 5 seconds for real-time updates
+        const interval = setInterval(fetchStatusData, 5000);
 
         return () => clearInterval(interval);
     }, []);
@@ -54,6 +55,11 @@ const PatientDashboard = ({ setTotalPatients, setTotalAppointments }) => {
             }
         };
         fetchPatientData();
+
+        // Refresh every 5 seconds for real-time updates
+        const interval = setInterval(fetchPatientData, 5000);
+
+        return () => clearInterval(interval);
     }, [setTotalPatients, setTotalAppointments, statusData.sent, statusData.pending]);
 
     const { femalePatients, malePatients, otherPatients, nonPatients, ageCategories } = patientData;
@@ -106,11 +112,11 @@ const PatientDashboard = ({ setTotalPatients, setTotalAppointments }) => {
             pieChartAge = new Chart(pieChartAgeCtx, {
                 type: 'pie',
                 data: {
-                    labels: ['Above 18', '18 to 40', 'Above 40'],
+                    labels: ['Below 18', '18 to 40', 'Above 40'],
                     datasets: [
                         {
                             label: 'Number of Patients',
-                            data: [ageCategories.above18, ageCategories.from18to40, ageCategories.above40],
+                            data: [ageCategories.below18, ageCategories.from18to40, ageCategories.above40],
                             backgroundColor: [
                                 'rgba(255, 206, 86, 0.8)', // Yellow
                                 'rgba(75, 192, 192, 0.8)', // Green

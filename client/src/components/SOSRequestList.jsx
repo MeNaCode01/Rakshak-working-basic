@@ -14,6 +14,11 @@ const SOSRequestList = () => {
             }
         };
         fetchSOSRequests();
+
+        // Refresh every 5 seconds for real-time updates
+        const interval = setInterval(fetchSOSRequests, 5000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const handleAction = async (id, action) => {
