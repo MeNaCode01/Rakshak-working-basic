@@ -1,0 +1,14 @@
+[server]
+# Enable CORS for frontend access
+enableCORS = true
+enableXsrfProtection = false
+
+# Set the port
+port = 8501
+
+# Disable file watcher to reduce overhead
+fileWatcherType = "none"
+
+[browser]
+# Don't automatically open browser
+gatherUsageStats = false

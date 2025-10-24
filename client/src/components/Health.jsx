@@ -10,60 +10,8 @@ import FoodNutrientsGraph from './FoodNutrientGraph';
 
 const VideoCallInput = () => {
   const [input, setInput] = useState('');
-  const [mlServiceRunning, setMlServiceRunning] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [starting, setStarting] = useState(false);
   const navigate = useNavigate();
-
-  // Check if ML service is running
-  const checkMLService = async () => {
-    try {
-      const response = await fetch('http://localhost:8501/_stcore/health', { method: 'GET' });
-      setMlServiceRunning(true);
-    } catch (error) {
-      setMlServiceRunning(false);
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  // Auto-start ML service via backend
-  const startMLService = async () => {
-    setStarting(true);
-    try {
-      // Call backend to start ML service
-      await fetch('http://localhost:5001/start-ml-service', { method: 'POST' });
-      
-      // Wait and check if it started
-      let attempts = 0;
-      const checkInterval = setInterval(async () => {
-        attempts++;
-        try {
-          const response = await fetch('http://localhost:8501/_stcore/health');
-          if (response.ok || attempts > 20) {
-            clearInterval(checkInterval);
-            setStarting(false);
-            checkMLService();
-            if (response.ok) {
-              window.open('http://localhost:8501', '_blank');
-            }
-          }
-        } catch (e) {
-          // Still starting...
-        }
-      }, 1000);
-    } catch (error) {
-      console.error('Error starting ML service:', error);
-      setStarting(false);
-    }
-  };
-
-  React.useEffect(() => {
-    checkMLService();
-    // Recheck every 5 seconds
-    const interval = setInterval(checkMLService, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const submitHandler = () => {
     navigate(`/room/${input}`);
@@ -102,32 +50,16 @@ const VideoCallInput = () => {
           <h1 className="text-2xl font-light mb-4 text-white">
             <MdMedicalServices className="inline-block mr-2 text-green-600" /> Advance disease detection using ML and Deep Learning
           </h1>
-          
-                    {checking ? (
-            <Button className="w-full mt-4" disabled>
-              🔄 Checking ML service status...
-            </Button>
-          ) : mlServiceRunning ? (
-            <Button 
-              className="w-full mt-4 bg-green-600 hover:bg-green-700" 
-              onClick={() => window.open('http://localhost:8501', '_blank')}
-            >
-              <span className="inline-block w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
-              Open ML Dashboard
-            </Button>
-          ) : starting ? (
-            <Button className="w-full mt-4" disabled>
-              <span className="inline-block w-2 h-2 bg-yellow-400 rounded-full mr-2 animate-pulse"></span>
-              Starting ML Service... (this may take 20-30 seconds)
-            </Button>
-          ) : (
-            <Button 
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700" 
-              onClick={startMLService}
-            >
-              🚀 Start Advanced Disease Prediction
-            </Button>
-          )}
+          <p className="text-sm text-gray-400 mb-4">
+            Click below to launch the ML-powered disease prediction dashboard. 
+            Make sure to run START-ML-SERVICE.bat first if the service isn't running.
+          </p>
+          <Button 
+            className="w-full mt-4 bg-blue-600 hover:bg-blue-700" 
+            onClick={() => window.open('http://localhost:8501', '_blank')}
+          >
+            🚀 Open Advanced Disease Prediction Dashboard
+          </Button>
         </div>
       </div>
       <div className="flex flex-col md:flex-row justify-center mt-8 gap-4">
