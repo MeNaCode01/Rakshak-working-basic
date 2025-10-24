@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
-import Section from './Section';
-import { useNavigate } from 'react-router-dom';
-import { FaUser, FaEnvelope, FaArrowRight } from 'react-icons/fa';
-import { MdMedicalServices } from 'react-icons/md';
-import Button from './Button';
-import DiseaseInputForm from './ChatBot';
-import DiseaseSpreadChart from './DiseaseSpreadChart';
-import FoodNutrientsGraph from './FoodNutrientGraph';
+import React, { useState } from "react";
+import Section from "./Section";
+import { useNavigate } from "react-router-dom";
+import { FaUser, FaEnvelope, FaArrowRight } from "react-icons/fa";
+import { MdMedicalServices } from "react-icons/md";
+import Button from "./Button";
+import DiseaseInputForm from "./ChatBot";
+import DiseaseSpreadChart from "./DiseaseSpreadChart";
+import FoodNutrientsGraph from "./FoodNutrientGraph";
 
 const VideoCallInput = () => {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [starting, setStarting] = useState(false);
   const navigate = useNavigate();
 
@@ -25,7 +25,8 @@ const VideoCallInput = () => {
       <div className="flex flex-col md:flex-row justify-between gap-2">
         <div className="left w-full md:w-3/5 left-0 max-w-3xl h-52 mx-auto bg-black shadow-md rounded border border-zinc-800 px-8 pt-6 pb-8 mb-4 md:ml-16">
           <h1 className="text-2xl font-light mb-6 text-white">
-            <FaUser className="inline-block mr-2 text-red-500 font-normal" /> End to end encrypted meetings
+            <FaUser className="inline-block mr-2 text-red-500 font-normal" />{" "}
+            End to end encrypted meetings
           </h1>
           <div className="mb-6">
             <div className="flex items-center rounded-full overflow-hidden w-full bg-gray-800 px-4 py-2 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-opacity-75">
@@ -48,15 +49,17 @@ const VideoCallInput = () => {
         </div>
         <div className="right md:w-1/2 text-lg mt-4 md:mt-0 h-52 md:ml-4 rounded border border-zinc-800 px-8 pt-6 pb-8 mr-16">
           <h1 className="text-2xl font-light mb-4 text-white">
-            <MdMedicalServices className="inline-block mr-2 text-green-600" /> Advance disease detection using ML and Deep Learning
+            <MdMedicalServices className="inline-block mr-2 text-green-600" />{" "}
+            Advance disease detection using ML and Deep Learning
           </h1>
           <p className="text-sm text-gray-400 mb-4">
-            Click below to launch the ML-powered disease prediction dashboard. 
-            Make sure to run START-ML-SERVICE.bat first if the service isn't running.
+            Click below to launch the ML-powered disease prediction dashboard.
+            Make sure to run START-ML-SERVICE.bat first if the service isn't
+            running.
           </p>
-          <Button 
-            className="w-full mt-4 bg-blue-600 hover:bg-blue-700" 
-            onClick={() => window.open('http://localhost:8501', '_blank')}
+          <Button
+            className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
+            onClick={() => window.open("http://localhost:8501", "_blank")}
           >
             🚀 Open Advanced Disease Prediction Dashboard
           </Button>
@@ -73,7 +76,6 @@ const VideoCallInput = () => {
       <div className="-mt-16 ">
         <DiseaseInputForm />
       </div>
-      
     </Section>
   );
 };

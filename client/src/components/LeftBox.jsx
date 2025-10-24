@@ -52,8 +52,8 @@ export const LeftBox = () => {
   };
 
   return (
-    <div className="flex flex-col bg-stone-900 rounded-md">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
+    <div className="flex flex-col bg-stone-900 rounded-md h-full max-h-[800px] min-h-[500px]">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 flex-shrink-0">
         <h2 className="text-white text-xl font-medium">Data</h2>
         <div className="flex space-x-2">
           <MiniNavButton
@@ -68,7 +68,9 @@ export const LeftBox = () => {
           />
         </div>
       </div>
-      {renderContent()}
+      <div className="overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-purple-600 scrollbar-track-zinc-800">
+        {renderContent()}
+      </div>
       {/* { activeTab ?
         <DataSent /> : <DataReceived />
       } */}

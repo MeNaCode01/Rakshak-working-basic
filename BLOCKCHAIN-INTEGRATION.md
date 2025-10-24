@@ -21,6 +21,7 @@ Blockchain Storage
 ## Files Modified for Blockchain
 
 ### 1. Smart Contract
+
 - **Location**: `blockchain/contracts/Contract.sol`
 - **Functions**:
   - `addFileToIPFS(address _sender, address _receiver, string _cid)` - Store document reference
@@ -28,6 +29,7 @@ Blockchain Storage
   - `handle()` - Cross-chain messaging via Hyperlane
 
 ### 2. Frontend Integration
+
 - **Location**: `client/src/components/RightBox.jsx`
 - **Features**:
   - File upload via drag-and-drop
@@ -36,6 +38,7 @@ Blockchain Storage
   - Document scrambling option
 
 ### 3. Environment Configuration
+
 - **Location**: `client/.env.development`
 - **Variables**:
   - `VITE_CONTRACT_ADDRESS` - Your deployed contract address
@@ -52,6 +55,7 @@ npx hardhat run scripts/deploy.js --network sepolia
 ```
 
 **Expected Output:**
+
 ```
 Deploying VoteMain contract to Sepolia testnet...
 Deploying contract with mailbox: 0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766
@@ -66,9 +70,11 @@ Owner: 0xYourWalletAddress
 1. Copy your contract address from the deployment output
 2. Open `client/.env.development`
 3. Update the line:
+
 ```env
 VITE_CONTRACT_ADDRESS=0xYourNewContractAddress
 ```
+
 4. Save the file
 
 ### Step 3: Restart Frontend
@@ -84,6 +90,7 @@ The frontend will now connect to your newly deployed contract!
 ## 🧪 Testing the Integration
 
 ### 1. Connect MetaMask
+
 - Open your frontend
 - Navigate to the "Share" page
 - Click "Connect Wallet" (if prompted)
@@ -92,11 +99,13 @@ The frontend will now connect to your newly deployed contract!
 ### 2. Test Document Upload
 
 1. **Enter Receiver Address**:
+
    - Get a test address (can be another wallet or same wallet)
    - Enter in "Receiver Id" field
    - Click "Verify"
 
 2. **Upload Document**:
+
    - Drag and drop a file (PDF, image, etc.)
    - Click "Send"
    - Approve MetaMask transaction
@@ -137,16 +146,19 @@ The frontend will now connect to your newly deployed contract!
 ## 🔧 Configuration Options
 
 ### Contract Address
+
 - **Current**: Hardcoded fallback in RightBox.jsx
 - **After Deployment**: Use environment variable
 - **Production**: Update to mainnet contract
 
 ### IPFS Backend
+
 - **Location**: `backend/server.js` (Port 5001)
 - **Endpoint**: `POST /share`
 - **Returns**: `{ IpfsHash: "Qm..." }`
 
 ### Thirdweb SDK
+
 - **Auto-configured**: Based on contract address
 - **Network**: Sepolia (chainId: 11155111)
 - **Features**: Wallet connection, contract calls, transaction signing
@@ -154,13 +166,15 @@ The frontend will now connect to your newly deployed contract!
 ## 🆘 Troubleshooting
 
 ### "Transaction Failed"
+
 - **Cause**: Insufficient gas or wrong network
-- **Solution**: 
+- **Solution**:
   - Check you're on Sepolia network
   - Get more Sepolia ETH from faucets
   - Try increasing gas limit in MetaMask
 
 ### "Contract Not Found"
+
 - **Cause**: Wrong contract address or network
 - **Solution**:
   - Verify contract address in `.env.development`
@@ -168,6 +182,7 @@ The frontend will now connect to your newly deployed contract!
   - Verify contract deployed successfully on Etherscan
 
 ### "IPFS Upload Failed"
+
 - **Cause**: Backend not running or connection issues
 - **Solution**:
   - Make sure backend is running (Port 5001)
@@ -175,6 +190,7 @@ The frontend will now connect to your newly deployed contract!
   - Test backend: `curl http://localhost:5001/health`
 
 ### "Cannot Read Properties of Undefined"
+
 - **Cause**: MetaMask not connected
 - **Solution**:
   - Install MetaMask extension

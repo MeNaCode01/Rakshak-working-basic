@@ -18,7 +18,9 @@ import { IoCloseSharp } from "react-icons/io5";
 import { imgFile } from "../assets";
 import axios from "axios";
 
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
+const CONTRACT_ADDRESS =
+  import.meta.env.VITE_CONTRACT_ADDRESS ||
+  "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
 
 const Dashboard = () => {
   const { contract, isLoading } = useContract(CONTRACT_ADDRESS);
@@ -27,17 +29,197 @@ const Dashboard = () => {
   const [msg, setMsg] = useState([]);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [deletedDocs, setDeletedDocs] = useState([]);
+  const [docMetadata, setDocMetadata] = useState({});
+  const [isLoadingDocs, setIsLoadingDocs] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("");
+
+  // Function to fetch metadata from IPFS if not in localStorage
+  const fetchMetadataFromIPFS = async (cid, metadataCid) => {
+    try {
+      const response = await axios.get(`https://ipfs.io/ipfs/${metadataCid}`);
+      return response.data;
+    } catch (error) {
+      console.error("Failed to fetch metadata from IPFS:", error);
+      return null;
+    }
+  };
+
+  // Load and merge metadata from localStorage and IPFS
+  const loadAllMetadata = async (documents) => {
+    if (!address) return;
+
+    // Load from localStorage
+    const localMetadata = JSON.parse(
+      localStorage.getItem(`docMetadata_${address}`) || "{}"
+    );
+    const mergedMetadata = { ...localMetadata };
+
+    // For each document, try to fetch metadata from IPFS if it has a metadataCid
+    for (const doc of documents) {
+      if (!mergedMetadata[doc.cid]) {
+        // Check if there's a metadata file on IPFS
+        // We'll look for a standard naming: {documentCID}_metadata
+        try {
+          const metadataCid = `${doc.cid}_metadata`;
+          const ipfsMetadata = await fetchMetadataFromIPFS(
+            doc.cid,
+            metadataCid
+          );
+          if (ipfsMetadata) {
+            mergedMetadata[doc.cid] = ipfsMetadata;
+          }
+        } catch (error) {
+          // Metadata not found on IPFS, that's okay
+        }
+      } else if (mergedMetadata[doc.cid].metadataCid) {
+        // Try to fetch fresh metadata from IPFS
+        try {
+          const ipfsMetadata = await fetchMetadataFromIPFS(
+            doc.cid,
+            mergedMetadata[doc.cid].metadataCid
+          );
+          if (ipfsMetadata) {
+            mergedMetadata[doc.cid] = {
+              ...ipfsMetadata,
+              metadataCid: mergedMetadata[doc.cid].metadataCid,
+            };
+          }
+        } catch (error) {
+          // Use localStorage version as fallback
+        }
+      }
+    }
+
+    setDocMetadata(mergedMetadata);
+
+    // Update localStorage with any new metadata found
+    localStorage.setItem(
+      `docMetadata_${address}`,
+      JSON.stringify(mergedMetadata)
+    );
+
+    return mergedMetadata;
+  };
+
+  // Load deleted documents and metadata from localStorage on mount
+  useEffect(() => {
+    if (address) {
+      const stored = localStorage.getItem(`deletedDocs_${address}`);
+      if (stored) {
+        setDeletedDocs(JSON.parse(stored));
+      }
+
+      // Load document metadata
+      const metadata = localStorage.getItem(`docMetadata_${address}`);
+      if (metadata) {
+        setDocMetadata(JSON.parse(metadata));
+      }
+    }
+  }, [address]);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!isLoading) {
-        const data = await contract.call("getFiles", [address]);
-        setMsg(data);
-        console.log(msg.length);
+      if (!isLoading && contract && address) {
+        try {
+          setIsLoadingDocs(true);
+          setLoadingMessage("📡 Connecting to blockchain...");
+
+          // Get files uploaded BY this address
+          const uploadedData = await contract.call("getFiles", [address]);
+          console.log("📤 Files uploaded by you:", uploadedData.length);
+
+          // Get files transferred TO this address by checking localStorage cache
+          setLoadingMessage("📥 Checking for received documents...");
+
+          // Use localStorage to track received files (populated when someone transfers to you)
+          const receivedFilesCache = JSON.parse(
+            localStorage.getItem(`receivedFiles_${address}`) || "[]"
+          );
+          console.log(
+            "📥 Received files from cache:",
+            receivedFilesCache.length
+          );
+          console.log("📥 Received files cache content:", receivedFilesCache);
+          console.log("📥 Looking for key:", `receivedFiles_${address}`);
+          
+          // Debug: Show all localStorage keys that might be related
+          const allKeys = Object.keys(localStorage).filter(key => key.includes('receivedFiles'));
+          console.log("🔍 All receivedFiles keys in localStorage:", allKeys);
+
+          // Convert cached received files to proper format
+          const receivedFiles = receivedFilesCache.map((item) => ({
+            cid: item.cid,
+            receiver: item.receiver || address,
+            timestamp: item.timestamp || "0x0",
+            isReceived: true,
+          }));
+
+          // Combine uploaded and received files
+          const allFiles = [...uploadedData, ...receivedFiles];
+
+          // Deduplicate by CID (in case same file appears multiple times)
+          const uniqueFiles = Array.from(
+            new Map(allFiles.map((item) => [item.cid, item])).values()
+          );
+
+          console.log(
+            "📋 Total unique documents:",
+            uniqueFiles.length,
+            "(Uploaded:",
+            uploadedData.length,
+            "+ Received:",
+            receivedFiles.length,
+            ")"
+          );
+
+          setLoadingMessage("🔍 Filtering and sorting documents...");
+
+          // Sort by timestamp - newest first (descending order)
+          const sortedData = [...uniqueFiles].sort((a, b) => {
+            const timestampA = bytes32ToDecimal(a.timestamp);
+            const timestampB = bytes32ToDecimal(b.timestamp);
+            return Number(timestampB) - Number(timestampA); // Newest first
+          });
+
+          // Filter out deleted documents
+          const filtered = sortedData.filter(
+            (doc) => !deletedDocs.includes(doc.cid)
+          );
+          setMsg(filtered);
+          console.log(
+            "✅ Documents to display:",
+            filtered.length,
+            "(hidden:",
+            deletedDocs.length,
+            ")"
+          );
+          
+          // Debug: Show what's being hidden
+          if (deletedDocs.length > 0) {
+            console.log("🗑️ Hidden document CIDs:", deletedDocs);
+            const hiddenDocs = sortedData.filter(doc => deletedDocs.includes(doc.cid));
+            console.log("🗑️ Hidden documents details:", hiddenDocs.map(d => ({ cid: d.cid.substring(0, 20), isReceived: d.isReceived })));
+          }
+
+          // Load metadata from both localStorage and IPFS
+          setLoadingMessage("📋 Loading patient information...");
+          await loadAllMetadata(filtered);
+
+          setIsLoadingDocs(false);
+          setLoadingMessage("");
+        } catch (error) {
+          console.error("Error loading documents:", error);
+          setIsLoadingDocs(false);
+          setLoadingMessage("");
+        }
       }
     };
     fetchData();
-  }, [address, contract]);
+  }, [address, contract, isLoading, deletedDocs]);
 
   const handleBoxClick = async (item) => {
     try {
@@ -55,6 +237,338 @@ const Dashboard = () => {
     setIsPopupOpen(false);
     window.location.reload();
     setSelectedImage(null);
+  };
+
+  const handleAnalyzeWithAI = async (item, event) => {
+    event.stopPropagation(); // Prevent opening the document
+
+    setSelectedDocument(item);
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    setIsPopupOpen(true);
+
+    try {
+      console.log("Analyzing document with CID:", item.cid);
+
+      // Fetch the image from IPFS
+      const imageUrl = `https://ipfs.io/ipfs/${item.cid}`;
+
+      // Convert image to base64 for Gemini Vision API
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+
+      // Check if it's an image
+      if (!blob.type.startsWith("image/")) {
+        setAiAnalysis({
+          error: true,
+          message:
+            "⚠️ This file is not an image. AI analysis is currently only available for medical images (X-rays, CT scans, MRI, etc.)",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+
+      reader.onloadend = async () => {
+        const base64Image = reader.result.split(",")[1];
+
+        // List of models to try (in order of preference)
+        const modelsToTry = [
+          "gemini-1.5-flash-latest",
+          "gemini-1.5-pro-latest",
+          "gemini-pro-vision",
+        ];
+
+        let lastError = null;
+        let success = false;
+
+        for (const modelName of modelsToTry) {
+          if (success) break;
+
+          try {
+            console.log(`Trying model: ${modelName}...`);
+
+            const geminiResponse = await axios.post(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=AIzaSyBGe74bxJu3TrJZqvVK3JpWBVXjYC-PkVc`,
+              {
+                contents: [
+                  {
+                    parts: [
+                      {
+                        text: `You are an expert medical radiologist AI assistant. Analyze this medical imaging scan and provide a detailed professional report.
+
+Please structure your analysis as follows:
+
+**1. IMAGE IDENTIFICATION**
+- Type of scan (X-ray, CT, MRI, Ultrasound, etc.)
+- Anatomical region/body part shown
+- Imaging plane (if applicable: AP, lateral, axial, sagittal, coronal)
+- Image quality assessment
+
+**2. TECHNICAL PARAMETERS**
+- Exposure and contrast evaluation
+- Positioning adequacy
+- Any technical limitations or artifacts
+
+**3. ANATOMICAL FINDINGS**
+- Normal anatomical structures visible
+- Bone/soft tissue/organ appearances
+- Symmetry and alignment
+- Size and position of structures
+
+**4. PATHOLOGICAL FINDINGS** (if any)
+- Abnormalities detected
+- Location and characteristics
+- Size and extent of any lesions
+- Comparison with normal anatomy
+
+**5. RADIOLOGICAL INTERPRETATION**
+- Primary diagnostic impression
+- Differential diagnoses (if applicable)
+- Severity assessment (if applicable)
+
+**6. CLINICAL RECOMMENDATIONS**
+- Suggested follow-up imaging
+- Additional tests recommended
+- Urgency level (routine, urgent, emergency)
+- Specialist consultation if needed
+
+**7. LIMITATIONS**
+- Any factors limiting interpretation
+- Need for comparison with prior studies
+
+Be specific, use proper medical terminology, and provide detailed observations. If you cannot identify specific pathology, describe what you DO see in detail.`,
+                      },
+                      {
+                        inline_data: {
+                          mime_type: blob.type,
+                          data: base64Image,
+                        },
+                      },
+                    ],
+                  },
+                ],
+                generationConfig: {
+                  temperature: 0.3,
+                  topK: 40,
+                  topP: 0.95,
+                  maxOutputTokens: 2048,
+                },
+                safetySettings: [
+                  {
+                    category: "HARM_CATEGORY_HARASSMENT",
+                    threshold: "BLOCK_NONE",
+                  },
+                  {
+                    category: "HARM_CATEGORY_HATE_SPEECH",
+                    threshold: "BLOCK_NONE",
+                  },
+                  {
+                    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold: "BLOCK_NONE",
+                  },
+                  {
+                    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold: "BLOCK_NONE",
+                  },
+                ],
+              },
+              {
+                timeout: 60000,
+              }
+            );
+
+            console.log(`Success with model: ${modelName}`);
+            console.log("Full Gemini response:", geminiResponse.data);
+
+            if (geminiResponse.data?.candidates?.[0]) {
+              const candidate = geminiResponse.data.candidates[0];
+
+              if (candidate.finishReason === "SAFETY") {
+                console.warn("Content blocked by safety filters");
+                setAiAnalysis({
+                  error: true,
+                  message: `⚠️ **Analysis Blocked by Safety Filters**
+                  
+The AI safety system blocked the analysis. This can happen with medical images due to content policies.
+
+**Workaround Options:**
+1. Try a different medical image
+2. Ensure the image is clearly a diagnostic scan (not photos of injuries)
+3. Use professional DICOM viewer software for detailed analysis
+4. Consult with a radiologist directly
+
+**Note:** Medical AI analysis requires specialized tools and may not be available through free consumer APIs.`,
+                });
+                setIsAnalyzing(false);
+                return;
+              }
+
+              if (candidate.content?.parts?.[0]?.text) {
+                const analysisText = candidate.content.parts[0].text;
+
+                const fullReport = `${analysisText}
+
+---
+
+**⚠️ CRITICAL MEDICAL DISCLAIMER**
+
+This AI-generated analysis is provided for educational and informational purposes only. 
+
+**THIS IS NOT A MEDICAL DIAGNOSIS**
+
+• This report must be reviewed and verified by a licensed radiologist
+• Do not make medical decisions based solely on this AI analysis
+• Always consult qualified healthcare professionals for diagnosis and treatment
+• In medical emergencies, seek immediate professional care
+• AI can make errors - human expert review is essential
+
+**Legal Notice:** This analysis does not establish a doctor-patient relationship and should not replace professional medical consultation.
+
+---
+
+**Report Generated:** ${new Date().toLocaleString()}
+**Analysis Method:** AI-Assisted (${modelName})
+**Status:** PRELIMINARY - Requires Professional Radiologist Review`;
+
+                setAiAnalysis({
+                  error: false,
+                  message: fullReport,
+                  imageUrl: imageUrl,
+                });
+                success = true;
+                setIsAnalyzing(false);
+                return;
+              }
+            }
+          } catch (modelError) {
+            console.error(
+              `Model ${modelName} failed:`,
+              modelError.response?.data || modelError.message
+            );
+            lastError = modelError;
+            // Continue to next model
+          }
+        }
+
+        // If all models failed, show error
+        if (!success) {
+          const status = lastError?.response?.status;
+          const errorData = lastError?.response?.data?.error;
+
+          let errorMessage = `⚠️ **Unable to Analyze Medical Image**\n\n`;
+
+          if (status === 404) {
+            errorMessage += `**Issue:** Gemini Vision models not available for your API key\n\n`;
+            errorMessage += `**Details:** ${
+              errorData?.message ||
+              "Vision models may not be enabled for free tier"
+            }\n\n`;
+            errorMessage += `**Solutions:**\n`;
+            errorMessage += `1. **Check your API key** at https://aistudio.google.com/app/apikey\n`;
+            errorMessage += `2. **Enable Gemini 1.5 models** in your Google AI Studio project\n`;
+            errorMessage += `3. **Create a new API key** with vision access\n`;
+            errorMessage += `4. **Consider upgrading** to paid tier for full vision support\n`;
+          } else if (status === 403) {
+            errorMessage += `**Issue:** API Key Limitation\n\n`;
+            errorMessage += `Your API key may not have access to vision features.\n\n`;
+            errorMessage += `**Solutions:**\n`;
+            errorMessage += `1. **Enable billing** in Google AI Studio\n`;
+            errorMessage += `2. **Create new API key** with vision capabilities\n`;
+            errorMessage += `3. **Check quota** at https://aistudio.google.com/app/apikey\n`;
+          } else {
+            errorMessage += `**Error:** ${
+              errorData?.message || lastError?.message || "Unknown error"
+            }\n`;
+            errorMessage += `**Status Code:** ${status || "Network Error"}\n`;
+          }
+
+          errorMessage += `\n---\n\n`;
+          errorMessage += `**Alternative Options for Medical Image Analysis:**\n\n`;
+          errorMessage += `1. **Professional Radiology Services** - Most reliable\n`;
+          errorMessage += `2. **Hospital PACS Systems** - For official medical records\n`;
+          errorMessage += `3. **Telemedicine Platforms** - Remote radiologist consultation\n`;
+          errorMessage += `4. **Medical Imaging Software** - DICOM viewers with AI plugins\n`;
+
+          setAiAnalysis({
+            error: true,
+            message: errorMessage,
+          });
+          setIsAnalyzing(false);
+        }
+      };
+
+      reader.onerror = () => {
+        setAiAnalysis({
+          error: true,
+          message: "Failed to load image from IPFS. Please try again.",
+        });
+        setIsAnalyzing(false);
+      };
+    } catch (error) {
+      console.error("Error analyzing document:", error);
+      setAiAnalysis({
+        error: true,
+        message:
+          "Failed to analyze document. Please ensure it's a valid medical image.",
+      });
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleCloseAnalysis = () => {
+    setIsPopupOpen(false);
+    setAiAnalysis(null);
+    setSelectedDocument(null);
+    setIsAnalyzing(false);
+  };
+
+  const handleDeleteDocument = (item, event) => {
+    event.stopPropagation(); // Prevent opening the document
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete this document?\n\nCID: ${item.cid.substring(
+        0,
+        30
+      )}...\n\nNote: This will hide the document from your view. The document will still exist on the blockchain and IPFS.`
+    );
+
+    if (confirmDelete) {
+      // Add to deleted list
+      const newDeletedDocs = [...deletedDocs, item.cid];
+      setDeletedDocs(newDeletedDocs);
+
+      // Save to localStorage
+      localStorage.setItem(
+        `deletedDocs_${address}`,
+        JSON.stringify(newDeletedDocs)
+      );
+
+      // Update the displayed documents
+      const filteredDocs = msg.filter((doc) => doc.cid !== item.cid);
+      setMsg(filteredDocs);
+
+      alert("✅ Document deleted from your view successfully!");
+    }
+  };
+
+  const handleRestoreDeleted = () => {
+    const confirmRestore = window.confirm(
+      `Are you sure you want to restore all deleted documents?\n\nThis will show ${deletedDocs.length} hidden documents again.`
+    );
+
+    if (confirmRestore) {
+      // Clear deleted list
+      setDeletedDocs([]);
+      localStorage.removeItem(`deletedDocs_${address}`);
+
+      // Refresh to show all documents
+      handleRefresh();
+
+      alert("✅ All deleted documents have been restored!");
+    }
   };
 
   const bytes32ToDecimal = (bytes32Hex) => {
@@ -76,57 +590,120 @@ const Dashboard = () => {
   const convertUTC = (value) => {
     try {
       let seconds = 0;
-      if (typeof value === 'string' && value.startsWith('0x')) {
+      if (typeof value === "string" && value.startsWith("0x")) {
         // bytes32 hex
         seconds = Number(bytes32ToDecimal(value));
-      } else if (typeof value === 'string' && /^[0-9]+$/.test(value)) {
+      } else if (typeof value === "string" && /^[0-9]+$/.test(value)) {
         seconds = Number(value);
-      } else if (typeof value === 'number') {
+      } else if (typeof value === "number") {
         seconds = value;
       } else if (value && value._hex) {
         // ethers BigNumber
-        seconds = Number(value._hex ? BigInt(value._hex).toString() : value.toString());
+        seconds = Number(
+          value._hex ? BigInt(value._hex).toString() : value.toString()
+        );
       } else {
-        return 'Unknown time';
+        return "Unknown time";
       }
 
       const utcDate = new Date(seconds * 1000);
-      const istDate = utcDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+      const istDate = utcDate.toLocaleString("en-US", {
+        timeZone: "Asia/Kolkata",
+      });
       return istDate;
     } catch (err) {
-      console.error('convertUTC error:', err);
-      return 'Invalid time';
+      console.error("convertUTC error:", err);
+      return "Invalid time";
     }
   };
 
   const handleRefresh = async () => {
     try {
       if (!isLoading && contract && address) {
-        // Fetch indexed events from backend (includes both sent and received)
-        try {
-          const resp = await axios.get(`http://localhost:5001/files/${address}`);
-          const events = resp.data || [];
-          // Normalize to the shape used by UI: { cid, sender, receiver, timestamp }
-          const normalized = events.map((e) => ({
-            cid: e.cid,
-            sender: e.sender,
-            receiver: e.receiver,
-            timestamp: e.timestamp,
-          }));
-          setMsg(normalized);
-          console.log('Documents refreshed from events:', normalized.length);
-          alert(`Loaded ${normalized.length} documents (from events)`);
-        } catch (err) {
-          console.warn('Failed to fetch events from backend, falling back to contract.getFiles', err.message);
-          const data = await contract.call('getFiles', [address]);
-          setMsg(data);
-          console.log('Documents refreshed (contract):', data.length);
-          alert(`Loaded ${data.length} documents (from contract)`);
-        }
+        setIsLoadingDocs(true);
+        setLoadingMessage("🔄 Refreshing documents...");
+
+        console.log("🔄 Refreshing documents for address:", address);
+
+        setLoadingMessage("📡 Connecting to blockchain...");
+
+        // Get files uploaded BY this address
+        const uploadedData = await contract.call("getFiles", [address]);
+        console.log("📤 Files uploaded by you:", uploadedData.length);
+
+        // Get files transferred TO this address by checking localStorage cache
+        setLoadingMessage("� Checking for received documents...");
+
+        // Use localStorage to track received files (populated when someone transfers to you)
+        const receivedFilesCache = JSON.parse(
+          localStorage.getItem(`receivedFiles_${address}`) || "[]"
+        );
+        console.log("� Received files from cache:", receivedFilesCache.length);
+
+        // Convert cached received files to proper format
+        const receivedFiles = receivedFilesCache.map((item) => ({
+          cid: item.cid,
+          receiver: item.receiver || address,
+          timestamp: item.timestamp || "0x0",
+          isReceived: true,
+        }));
+
+        // Combine uploaded and received files
+        const allFiles = [...uploadedData, ...receivedFiles];
+
+        // Deduplicate by CID (in case same file appears multiple times)
+        const uniqueFiles = Array.from(
+          new Map(allFiles.map((item) => [item.cid, item])).values()
+        );
+
+        console.log(
+          "📋 Total unique documents:",
+          uniqueFiles.length,
+          "(Uploaded:",
+          uploadedData.length,
+          "+ Received:",
+          receivedFiles.length,
+          ")"
+        );
+
+        setLoadingMessage("🔍 Filtering and sorting documents...");
+
+        // Sort by timestamp - newest first (descending order)
+        const sortedData = [...uniqueFiles].sort((a, b) => {
+          const timestampA = bytes32ToDecimal(a.timestamp);
+          const timestampB = bytes32ToDecimal(b.timestamp);
+          return Number(timestampB) - Number(timestampA); // Newest first
+        });
+
+        // Filter out deleted documents
+        const filtered = sortedData.filter(
+          (doc) => !deletedDocs.includes(doc.cid)
+        );
+        setMsg(filtered);
+        console.log(
+          "✅ Documents to display:",
+          filtered.length,
+          "(hidden:",
+          deletedDocs.length,
+          ")"
+        );
+
+        // Load metadata from both localStorage and IPFS
+        setLoadingMessage("📋 Loading patient information...");
+        await loadAllMetadata(filtered);
+
+        setIsLoadingDocs(false);
+        setLoadingMessage("");
+
+        alert(
+          `✅ Refreshed! Found ${filtered.length} documents\n\n📤 Uploaded: ${uploadedData.length}\n📥 Received: ${receivedFiles.length}\n🗑️ Hidden: ${deletedDocs.length}`
+        );
       }
     } catch (error) {
       console.error("Error refreshing documents:", error);
-      alert("Failed to refresh documents");
+      setIsLoadingDocs(false);
+      setLoadingMessage("");
+      alert("Failed to refresh documents: " + error.message);
     }
   };
 
@@ -134,115 +711,326 @@ const Dashboard = () => {
     <Section id="features" className="min-h-screen">
       <UploadButton className="fixed bottom-4 right-4 z-100" />
       <div className="container relative z-2">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
           <Heading
             className="md:max-w-md lg:max-w-2xl"
             title="Your secured documents"
           />
-          <button
-            onClick={handleRefresh}
-            className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-700 text-white font-bold rounded-lg hover:from-orange-600 hover:to-orange-800 transition-all"
-          >
-            Refresh Documents
-          </button>
+          <div className="flex gap-3">
+            {deletedDocs.length > 0 && (
+              <button
+                onClick={handleRestoreDeleted}
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-700 text-white font-bold rounded-lg hover:from-green-600 hover:to-green-800 transition-all shadow-lg animate-pulse"
+                title="Click to show hidden documents"
+              >
+                🔄 Restore {deletedDocs.length} Hidden
+              </button>
+            )}
+            <button
+              onClick={handleRefresh}
+              className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-700 text-white font-bold rounded-lg hover:from-orange-600 hover:to-orange-800 transition-all"
+            >
+              Refresh Documents
+            </button>
+          </div>
         </div>
 
-        {msg.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-400 text-xl">No documents uploaded yet</p>
-            <p className="text-gray-500 mt-4">Click the Upload button to add your first document</p>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-10 mb-10">
-            {msg.map((item, index) => (
-            <div
-              className="block relative p-0.5 bg-no-repeat bg-[length:100%_100%] md:max-w-[24rem]"
-              key={index}
-              onClick={() => handleBoxClick(item)}
-            >
-              <div className="relative z-2 flex flex-col min-h-[12rem] p-[2.4rem] cursor-pointer">
-                <h5 className="text-xs font-bold text-orange-500 mb-2">Document #{index + 1}</h5>
-                <p className="text-sm mb-2 text-gray-400 break-all">
-                  <span className="font-semibold">CID:</span> {item.cid.substring(0, 20)}...
-                </p>
-                <p className="text-sm mb-2 text-gray-400">
-                  <span className="font-semibold">From:</span> {item.sender?.substring(0, 10)}...
-                </p>
-                <p className="text-sm mb-2 text-gray-400">
-                  <span className="font-semibold">To:</span> {item.receiver?.substring(0, 10)}...
-                </p>
-                <p className="body-2 mb-6 text-n-3">
-                  {convertUTC(item.timestamp)}
-                </p>
-                <div className="flex items-center mt-auto">
-                  <img
-                    src={benefitIcon3}
-                    width={48}
-                    height={48}
-                    alt="document"
-                  />
-                  <p className="ml-auto font-code text-xs hover:underline font-bold text-n-1 uppercase tracking-wider">
-                    Open document
-                  </p>
-                  <Arrow />
-                </div>
+        {/* Loading Indicator */}
+        {isLoadingDocs && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="relative">
+              <div className="w-20 h-20 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-2xl">📄</span>
               </div>
-
-              <GradientLight />
-
-              <div
-                className="absolute inset-0.5 bg-zinc-800"
-                style={{ clipPath: "url(#benefits)" }}
-              >
-                <div className="absolute inset-0 opacity-0 transition-opacity hover:opacity-90">
-                  <img
-                    src={benefitImage2}
-                    width={380}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </div>
-              <ClipPath />
             </div>
-          ))}
+            <p className="mt-6 text-lg font-semibold text-white">
+              {loadingMessage}
+            </p>
+            <p className="mt-2 text-sm text-gray-400">
+              Please wait while we fetch your documents...
+            </p>
+          </div>
+        )}
+
+        {/* Empty State with Helpful Message */}
+        {!isLoadingDocs && msg.length === 0 && (
+          <div className="text-center py-20 bg-zinc-900 rounded-lg border border-zinc-700">
+            <div className="text-6xl mb-4">📭</div>
+            <p className="text-gray-400 text-xl mb-2">No documents found</p>
+            <p className="text-gray-500 mt-2">
+              Click the{" "}
+              <span className="text-orange-500 font-semibold">Upload</span>{" "}
+              button to add your first document
+            </p>
+
+            {/* Just Uploaded Help Text */}
+            <div className="mt-8 max-w-md mx-auto bg-blue-900/30 border border-blue-500/50 rounded-lg p-6">
+              <p className="text-blue-300 font-semibold mb-2">
+                💡 Just uploaded a document?
+              </p>
+              <p className="text-sm text-blue-200 mb-3">
+                Blockchain transactions take ~30 seconds to confirm.
+              </p>
+              <div className="space-y-2 text-left text-sm text-gray-300">
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Wait 30-60 seconds after upload</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Click "Refresh Documents" button above</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Check MetaMask for transaction confirmation</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Received Documents Help Text */}
+            <div className="mt-6 max-w-md mx-auto bg-green-900/20 border border-green-500/40 rounded-lg p-6">
+              <p className="text-green-300 font-semibold mb-2">
+                📥 Expecting a transferred document?
+              </p>
+              <p className="text-sm text-green-200 mb-3">
+                Documents transferred to you will appear here automatically.
+              </p>
+              <div className="space-y-2 text-left text-sm text-gray-300">
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Make sure you're using the same wallet & browser</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Check "Data Received" tab for transfer history</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>
+                    Ask sender to confirm the correct receiver address
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Documents Grid */}
+        {!isLoadingDocs && msg.length > 0 && (
+          <div className="flex flex-wrap gap-10 mb-10">
+            {msg.map((item, index) => {
+              const metadata = docMetadata[item.cid] || {};
+              return (
+                <div
+                  className="block relative p-0.5 bg-no-repeat bg-[length:100%_100%] md:max-w-[24rem]"
+                  key={index}
+                  onClick={() => handleBoxClick(item)}
+                >
+                  <div className="relative z-2 flex flex-col min-h-[12rem] p-[2.4rem] cursor-pointer">
+                    {/* Received/Uploaded Badge */}
+                    {item.isReceived && (
+                      <div className="absolute top-3 right-3 px-2 py-1 bg-green-900/40 border border-green-500/60 rounded-full text-xs text-green-300 font-semibold">
+                        📥 Received
+                      </div>
+                    )}
+
+                    {/* Patient Info Header */}
+                    {metadata.patientName && (
+                      <div className="mb-3 pb-3 border-b border-zinc-700">
+                        <h4 className="text-lg font-bold text-purple-400 mb-1">
+                          👤 {metadata.patientName}
+                        </h4>
+                        {metadata.patientId && metadata.patientId !== "N/A" && (
+                          <p className="text-xs text-gray-400">
+                            ID: {metadata.patientId}
+                          </p>
+                        )}
+                        {metadata.documentType && (
+                          <span className="inline-block mt-1 px-2 py-1 bg-orange-900/30 border border-orange-500/50 rounded text-xs text-orange-300">
+                            {metadata.documentType}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <h5 className="text-xs font-bold text-orange-500 mb-2">
+                      {metadata.patientName
+                        ? "Document Details"
+                        : `Document #${index + 1}`}
+                    </h5>
+                    <p className="text-sm mb-2 text-gray-400 break-all">
+                      <span className="font-semibold">CID:</span>{" "}
+                      {item.cid.substring(0, 20)}...
+                    </p>
+                    <p className="text-sm mb-2 text-gray-400">
+                      <span className="font-semibold">From:</span>{" "}
+                      {item.sender?.substring(0, 10)}...
+                    </p>
+                    <p className="text-sm mb-2 text-gray-400">
+                      <span className="font-semibold">To:</span>{" "}
+                      {item.receiver?.substring(0, 10)}...
+                    </p>
+                    <p className="body-2 mb-6 text-n-3">
+                      {convertUTC(item.timestamp)}
+                    </p>
+                    <div className="flex flex-col gap-2 mt-auto">
+                      <div className="flex items-center">
+                        <img
+                          src={benefitIcon3}
+                          width={48}
+                          height={48}
+                          alt="document"
+                        />
+                        <p className="ml-auto font-code text-xs hover:underline font-bold text-n-1 uppercase tracking-wider">
+                          Open document
+                        </p>
+                        <Arrow />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={(e) => handleAnalyzeWithAI(item, e)}
+                          className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all text-xs"
+                        >
+                          🤖 Analyze AI
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteDocument(item, e)}
+                          className="px-3 py-2 bg-gradient-to-r from-red-500 to-red-700 text-white font-bold rounded-lg hover:from-red-600 hover:to-red-800 transition-all text-xs"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <GradientLight />
+
+                  <div
+                    className="absolute inset-0.5 bg-zinc-800"
+                    style={{ clipPath: "url(#benefits)" }}
+                  >
+                    <div className="absolute inset-0 opacity-0 transition-opacity hover:opacity-90">
+                      <img
+                        src={benefitImage2}
+                        width={380}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                  <ClipPath />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
       {isPopupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-xl bg-white rounded-lg shadow-lg overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h5 className="text-xl font-medium text-gray-800">
-                Image Preview
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4">
+          <div className="w-full max-w-6xl bg-zinc-900 rounded-lg shadow-2xl overflow-hidden border border-zinc-700">
+            <div className="flex items-center justify-between p-6 border-b border-zinc-700 bg-zinc-800">
+              <h5 className="text-2xl font-bold text-white flex items-center gap-2">
+                🤖 AI Medical Image Analysis
               </h5>
               <button
-                onClick={handlePopupClose}
+                onClick={handleCloseAnalysis}
                 type="button"
-                className="text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="text-gray-400 hover:text-white transition-colors"
               >
-                <IoCloseSharp size={24} />
+                <IoCloseSharp size={28} />
               </button>
             </div>
-            <div className="p-4">
-              {selectedImage && (
-                <iframe
-                  src="https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/QmUtMaPZACmApkw9h9N1bLd6avr78kkgqyhAgfRa8ccdP3"
-                  height="100px"
-                  width="100px"
-                ></iframe>
-              )}
-              {!selectedImage && (
-                <>
-                  <iframe
-                    src="https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/QmUtMaPZACmApkw9h9N1bLd6avr78kkgqyhAgfRa8ccdP3"
-                    height="100px"
-                    width="100px"
-                  ></iframe>
-                  <p className="text-gray-500 text-center">
-                    No image selected.
+
+            <div className="p-6 max-h-[80vh] overflow-y-auto">
+              {isAnalyzing ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
+                  <p className="text-white text-xl font-semibold">
+                    Analyzing medical image...
                   </p>
-                </>
+                  <p className="text-gray-400 mt-2">
+                    This may take a few seconds
+                  </p>
+                </div>
+              ) : aiAnalysis ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Image Preview */}
+                  <div className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                    <h6 className="text-lg font-bold text-white mb-4">
+                      Medical Image
+                    </h6>
+                    {aiAnalysis.imageUrl && (
+                      <img
+                        src={aiAnalysis.imageUrl}
+                        alt="Medical scan"
+                        className="w-full h-auto rounded-lg border border-zinc-600"
+                      />
+                    )}
+                    {selectedDocument && (
+                      <div className="mt-4 text-sm text-gray-400">
+                        <p>
+                          <span className="font-semibold">CID:</span>{" "}
+                          {selectedDocument.cid.substring(0, 30)}...
+                        </p>
+                        <p>
+                          <span className="font-semibold">Uploaded:</span>{" "}
+                          {convertUTC(selectedDocument.timestamp)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI Analysis Results */}
+                  <div className="bg-zinc-800 rounded-lg p-4 border border-zinc-700">
+                    <h6 className="text-lg font-bold text-white mb-4">
+                      AI Analysis Report
+                    </h6>
+                    {aiAnalysis.error ? (
+                      <div className="bg-red-900/30 border border-red-500 text-red-200 p-4 rounded-lg">
+                        {aiAnalysis.message}
+                      </div>
+                    ) : (
+                      <div className="prose prose-invert max-w-none">
+                        <div className="text-gray-300 whitespace-pre-line leading-relaxed">
+                          {aiAnalysis.message}
+                        </div>
+                        <div className="mt-6 p-4 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                          <p className="text-yellow-200 text-sm font-semibold">
+                            ⚠️ Medical Disclaimer:
+                          </p>
+                          <p className="text-yellow-300 text-xs mt-2">
+                            This AI analysis is for informational purposes only
+                            and should not replace professional medical advice,
+                            diagnosis, or treatment. Always consult with a
+                            qualified healthcare provider for medical decisions.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-gray-400">No analysis available</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 p-6 border-t border-zinc-700 bg-zinc-800">
+              <button
+                onClick={handleCloseAnalysis}
+                className="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition-all"
+              >
+                Close
+              </button>
+              {aiAnalysis && !aiAnalysis.error && (
+                <button
+                  onClick={() => window.print()}
+                  className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all"
+                >
+                  Print Report
+                </button>
               )}
             </div>
           </div>

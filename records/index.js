@@ -1,27 +1,31 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import connect from './database/dbconfig.js';
-import Patient from './models/patient.js';
-import SOSRequest from './models/sosRequest.js';
-import cors from 'cors';
-import mongoose from 'mongoose';
+import express from "express";
+import dotenv from "dotenv";
+import connect from "./database/dbconfig.js";
+import Patient from "./models/patient.js";
+import SOSRequest from "./models/sosRequest.js";
+import cors from "cors";
+import mongoose from "mongoose";
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5500;
 
 app.use(express.json());
-app.use(cors({
-  origin: "http://localhost:5173",
-  methods: ['POST', 'GET', 'PUT', 'DELETE']
-}));
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    methods: ["POST", "GET", "PUT", "DELETE"],
+  })
+);
 connect();
 
-app.get('/sos/statusCounts', async (req, res) => {
+app.get("/sos/statusCounts", async (req, res) => {
   try {
-    const sentCount = await SOSRequest.countDocuments({ status: 'sent' });
-    const receivedCount = await SOSRequest.countDocuments({ status: 'received' });
-    const pendingCount = await SOSRequest.countDocuments({ status: 'pending' });
+    const sentCount = await SOSRequest.countDocuments({ status: "sent" });
+    const receivedCount = await SOSRequest.countDocuments({
+      status: "received",
+    });
+    const pendingCount = await SOSRequest.countDocuments({ status: "pending" });
 
     const statusCounts = {
       sent: sentCount,
@@ -31,45 +35,50 @@ app.get('/sos/statusCounts', async (req, res) => {
 
     res.status(200).json(statusCounts);
   } catch (error) {
-    console.error('Error fetching SOS request status counts:', error);
-    res.status(500).json({ error: 'Failed to fetch SOS request status counts.' });
+    console.error("Error fetching SOS request status counts:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch SOS request status counts." });
   }
 });
 
-app.post('/sos', async (req, res) => {
+app.post("/sos", async (req, res) => {
   try {
-    const { contactNumber, location, reason, healthProblem, estimatedTime } = req.body;
+    const { contactNumber, location, reason, healthProblem, estimatedTime } =
+      req.body;
     const newSOSRequest = new SOSRequest({
       contactNumber,
       location,
       reason,
       healthProblem,
       estimatedTime,
-      status: 'pending',
+      status: "pending",
     });
     const savedSOSRequest = await newSOSRequest.save();
     res.status(201).json(savedSOSRequest);
   } catch (error) {
-    console.error('Error creating SOS request:', error);
-    res.status(400).json({ error: 'Failed to create SOS request.' });
+    console.error("Error creating SOS request:", error);
+    res.status(400).json({ error: "Failed to create SOS request." });
   }
 });
 
-app.get('/sos', async (req, res) => {
+app.get("/sos", async (req, res) => {
   try {
     const sosRequests = await SOSRequest.find();
     res.status(200).json(sosRequests);
   } catch (error) {
-    console.error('Error fetching SOS requests:', error);
-    res.status(500).json({ error: 'Failed to fetch SOS requests.' });
+    console.error("Error fetching SOS requests:", error);
+    res.status(500).json({ error: "Failed to fetch SOS requests." });
   }
 });
 
-app.put('/sos/:id', async (req, res) => {
+app.put("/sos/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  console.log(`Received request to update SOS request with id: ${id} to status: ${status}`);
+  console.log(
+    `Received request to update SOS request with id: ${id} to status: ${status}`
+  );
 
   try {
     const updatedSOSRequest = await SOSRequest.findByIdAndUpdate(
@@ -80,38 +89,41 @@ app.put('/sos/:id', async (req, res) => {
 
     if (!updatedSOSRequest) {
       console.log(`SOS request with id: ${id} not found`);
-      return res.status(404).json({ error: 'SOS request not found' });
+      return res.status(404).json({ error: "SOS request not found" });
     }
 
-    console.log(`SOS request updated successfully: ${JSON.stringify(updatedSOSRequest)}`);
+    console.log(
+      `SOS request updated successfully: ${JSON.stringify(updatedSOSRequest)}`
+    );
     res.status(200).json(updatedSOSRequest);
   } catch (error) {
-    console.error('Error updating SOS request:', error);
-    res.status(500).json({ error: 'Failed to update SOS request.' });
+    console.error("Error updating SOS request:", error);
+    res.status(500).json({ error: "Failed to update SOS request." });
   }
 });
 
-app.delete('/sos/:id', async (req, res) => {
+app.delete("/sos/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const deletedSOSRequest = await SOSRequest.findByIdAndDelete(id);
     if (!deletedSOSRequest) {
-      return res.status(404).json({ error: 'SOS request not found' });
+      return res.status(404).json({ error: "SOS request not found" });
     }
-    res.status(200).json({ message: 'SOS request deleted successfully' });
+    res.status(200).json({ message: "SOS request deleted successfully" });
   } catch (error) {
-    console.error('Error deleting SOS request:', error);
-    res.status(500).json({ error: 'Failed to delete SOS request.' });
+    console.error("Error deleting SOS request:", error);
+    res.status(500).json({ error: "Failed to delete SOS request." });
   }
 });
 
-app.post('/patient', async (req, res) => {
+app.post("/patient", async (req, res) => {
   try {
     const {
       patientName,
       age,
       gender,
       bloodType,
+      department,
       allergies,
       diagnosis,
       treatment,
@@ -126,6 +138,7 @@ app.post('/patient', async (req, res) => {
       age,
       gender,
       bloodType,
+      department,
       allergies,
       diagnosis,
       treatment,
@@ -138,90 +151,104 @@ app.post('/patient', async (req, res) => {
     const savedPatient = await newPatient.save();
     res.status(201).json(savedPatient);
   } catch (error) {
-    console.error('Error creating patient:', error);
-    res.status(400).json({ error: 'Failed to create patient record.' });
+    console.error("Error creating patient:", error);
+    res.status(400).json({ error: "Failed to create patient record." });
   }
 });
 
-app.get('/patients', async (req, res) => {
+app.get("/patients", async (req, res) => {
   try {
     const patients = await Patient.find();
     res.status(200).json(patients);
   } catch (error) {
-    console.error('Error fetching patients:', error);
-    res.status(500).json({ error: 'Failed to fetch patients.' });
+    console.error("Error fetching patients:", error);
+    res.status(500).json({ error: "Failed to fetch patients." });
   }
 });
 
-app.delete('/patients/:id', async (req, res) => {
+app.delete("/patients/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const deletedPatient = await Patient.findByIdAndDelete(id);
     if (!deletedPatient) {
-      return res.status(404).json({ error: 'Patient not found' });
+      return res.status(404).json({ error: "Patient not found" });
     }
-    res.status(200).json({ message: 'Patient deleted successfully' });
+    res.status(200).json({ message: "Patient deleted successfully" });
   } catch (error) {
-    console.error('Error deleting patient:', error);
-    res.status(500).json({ error: 'Failed to delete patient.' });
+    console.error("Error deleting patient:", error);
+    res.status(500).json({ error: "Failed to delete patient." });
   }
 });
 
-app.get('/patients/:id', async (req, res) => {
+app.get("/patients/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const patient = await Patient.findById(id);
 
     if (!patient) {
-      return res.status(404).json({ error: 'Patient not found' });
+      return res.status(404).json({ error: "Patient not found" });
     }
 
     res.status(200).json(patient);
   } catch (error) {
-    console.error('Error fetching patient:', error);
-    res.status(500).json({ error: 'Failed to fetch patient' });
+    console.error("Error fetching patient:", error);
+    res.status(500).json({ error: "Failed to fetch patient" });
   }
 });
 
-app.put('/patients/:id', async (req, res) => {
+app.put("/patients/:id", async (req, res) => {
   const { id } = req.params;
   const updateData = {};
-  
+
   // Only add fields that are provided in the request
-  if (req.body.roomTemperature !== undefined) updateData.roomTemperature = req.body.roomTemperature;
-  if (req.body.bodyTemperature !== undefined) updateData.bodyTemperature = req.body.bodyTemperature;
-  if (req.body.oxygenLevel !== undefined) updateData.oxygenLevel = req.body.oxygenLevel;
+  if (req.body.roomTemperature !== undefined)
+    updateData.roomTemperature = req.body.roomTemperature;
+  if (req.body.bodyTemperature !== undefined)
+    updateData.bodyTemperature = req.body.bodyTemperature;
+  if (req.body.oxygenLevel !== undefined)
+    updateData.oxygenLevel = req.body.oxygenLevel;
   if (req.body.bmi !== undefined) updateData.bmi = req.body.bmi;
-  if (req.body.heartRate !== undefined) updateData.heartRate = req.body.heartRate;
-  if (req.body.doctorNotes !== undefined) updateData.doctorNotes = req.body.doctorNotes;
-  
+  if (req.body.heartRate !== undefined)
+    updateData.heartRate = req.body.heartRate;
+  if (req.body.doctorNotes !== undefined)
+    updateData.doctorNotes = req.body.doctorNotes;
+
   try {
-    const updatedPatient = await Patient.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: false }
-    );
+    const updatedPatient = await Patient.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: false,
+    });
 
     if (!updatedPatient) {
-      return res.status(404).json({ error: 'Patient not found' });
+      return res.status(404).json({ error: "Patient not found" });
     }
 
     res.status(200).json(updatedPatient);
   } catch (error) {
-    console.error('Error updating patient:', error);
-    res.status(500).json({ error: 'Failed to update patient', details: error.message });
+    console.error("Error updating patient:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to update patient", details: error.message });
   }
 });
 
-app.get('/patientsdashboard', async (req, res) => {
+app.get("/patientsdashboard", async (req, res) => {
   try {
-    const femalePatientsCount = await Patient.countDocuments({ gender: 'female' });
-    const malePatientsCount = await Patient.countDocuments({ gender: 'male' });
-    const binaryPatientsCount = await Patient.countDocuments({ gender: 'non-binary' });
-    const otherPatientsCount = await Patient.countDocuments({ gender: 'other' });
+    const femalePatientsCount = await Patient.countDocuments({
+      gender: "female",
+    });
+    const malePatientsCount = await Patient.countDocuments({ gender: "male" });
+    const binaryPatientsCount = await Patient.countDocuments({
+      gender: "non-binary",
+    });
+    const otherPatientsCount = await Patient.countDocuments({
+      gender: "other",
+    });
 
     const below18Count = await Patient.countDocuments({ age: { $lt: 18 } });
-    const from18to40Count = await Patient.countDocuments({ age: { $gte: 18, $lte: 40 } });
+    const from18to40Count = await Patient.countDocuments({
+      age: { $gte: 18, $lte: 40 },
+    });
     const above40Count = await Patient.countDocuments({ age: { $gt: 40 } });
 
     res.status(200).json({
@@ -236,8 +263,8 @@ app.get('/patientsdashboard', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching patient dashboard data:', error);
-    res.status(500).json({ error: 'Failed to fetch patient dashboard data.' });
+    console.error("Error fetching patient dashboard data:", error);
+    res.status(500).json({ error: "Failed to fetch patient dashboard data." });
   }
 });
 

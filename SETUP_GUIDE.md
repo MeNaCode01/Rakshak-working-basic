@@ -1,6 +1,7 @@
 # Rakshak 2.0 - Complete Setup Guide
 
 This project is a full-stack healthcare management system with:
+
 - **Frontend** (React + Vite + Web3)
 - **Backend** (Express + IPFS)
 - **Records Service** (Express + MongoDB)
@@ -54,6 +55,7 @@ This installs all JavaScript dependencies for all 4 Node.js services.
 4. Create a `.env` file in the `records/` folder:
 
 **File: `records/.env`**
+
 ```env
 PORT=3000
 MONGO_URI=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/rakshak?retryWrites=true&w=majority
@@ -77,6 +79,7 @@ VITE_TEMPLATE_CLIENT_ID=8bbcb06d826e4c9c7c41d14a6e3f75ab
 ```
 
 **Notes:**
+
 - `REACT_APP_BACKEND_URL` - Backend API server (will run on port 3000)
 - `REACT_APP_CHAT_URL` - Chat service (will run on port 5002)
 - `REACT_APP_CONTRACT_ADDRESS` - Your deployed smart contract address
@@ -106,23 +109,25 @@ Replace the hardcoded connection string with:
 
 ```javascript
 import mongoose from "mongoose";
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 
-const connect = async() =>{
-    try {
-        const mongoURI = process.env.MONGO_URI || "mongodb+srv://pat:1234@cluster0.dozkaef.mongodb.net/";
-        await mongoose.connect(mongoURI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-        });
-        console.log("Successfully connected to database.");
-    } catch (error) {
-        console.log(error);
-        console.log("Error while connecting to database.");
-    }
-}
+const connect = async () => {
+  try {
+    const mongoURI =
+      process.env.MONGO_URI ||
+      "mongodb+srv://pat:1234@cluster0.dozkaef.mongodb.net/";
+    await mongoose.connect(mongoURI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log("Successfully connected to database.");
+  } catch (error) {
+    console.log(error);
+    console.log("Error while connecting to database.");
+  }
+};
 
 export default connect;
 ```
@@ -134,37 +139,45 @@ export default connect;
 You need to run **4 services** in separate terminal windows:
 
 ### Terminal 1: Frontend (React + Vite)
+
 ```cmd
 cd client
 npm run dev
 ```
+
 **Access at:** http://localhost:5173
 
 ---
 
 ### Terminal 2: Backend (Express + IPFS)
+
 ```cmd
 cd backend
 npm run dev
 ```
+
 **Runs on:** http://localhost:3000
 
 ---
 
 ### Terminal 3: Records Service (Express + MongoDB)
+
 ```cmd
 cd records
 npm start
 ```
+
 **Runs on:** http://localhost:5500 (or PORT from .env)
 
 ---
 
 ### Terminal 4: ML Service (Streamlit)
+
 ```cmd
 cd workspace
 streamlit run app.py
 ```
+
 **Access at:** http://localhost:8501
 
 ---
@@ -174,11 +187,13 @@ streamlit run app.py
 If you want to deploy your own smart contract to zkSync:
 
 1. Create `blockchain/.env`:
+
 ```env
 PRIVATE_KEY=your_wallet_private_key_here
 ```
 
 2. Deploy:
+
 ```cmd
 cd blockchain
 npm run deploy
@@ -191,6 +206,7 @@ npm run deploy
 ## Troubleshooting
 
 ### Port Already in Use
+
 If you get "port already in use" errors:
 
 ```cmd
@@ -201,16 +217,19 @@ taskkill /PID <PID_NUMBER> /F
 Replace `3000` with the port number causing issues, and `<PID_NUMBER>` with the process ID shown.
 
 ### MongoDB Connection Failed
+
 - Verify your MongoDB Atlas cluster is running
 - Check username/password in `MONGO_URI`
 - Whitelist your IP address in MongoDB Atlas Network Access settings (or use `0.0.0.0/0` for all IPs during development)
 
 ### Python Module Not Found
+
 ```cmd
 pip install --upgrade <module_name>
 ```
 
 ### Node Module Errors
+
 ```cmd
 cd <folder>
 rm -rf node_modules package-lock.json
@@ -233,12 +252,12 @@ npm install
 
 ## Default Ports
 
-| Service | Port | URL |
-|---------|------|-----|
-| Frontend | 5173 | http://localhost:5173 |
-| Backend | 3000 | http://localhost:3000 |
-| Records | 5500 | http://localhost:5500 |
-| ML Service | 8501 | http://localhost:8501 |
+| Service               | Port | URL                   |
+| --------------------- | ---- | --------------------- |
+| Frontend              | 5173 | http://localhost:5173 |
+| Backend               | 3000 | http://localhost:3000 |
+| Records               | 5500 | http://localhost:5500 |
+| ML Service            | 8501 | http://localhost:8501 |
 | Chat (if implemented) | 5002 | http://localhost:5002 |
 
 ---
@@ -246,16 +265,19 @@ npm install
 ## Environment Variables Reference
 
 ### Client (`client/.env.development`)
+
 - `REACT_APP_BACKEND_URL` - Backend API URL
 - `REACT_APP_CHAT_URL` - Chat service URL
 - `REACT_APP_CONTRACT_ADDRESS` - Smart contract address
 - `VITE_TEMPLATE_CLIENT_ID` - OAuth client ID
 
 ### Records (`records/.env`)
+
 - `PORT` - Server port (default: 5500)
 - `MONGO_URI` - MongoDB connection string
 
 ### Blockchain (`blockchain/.env`) - Optional
+
 - `PRIVATE_KEY` - Wallet private key for deployment
 - `ALCHEMY_API_KEY` - Alchemy node provider (optional)
 - `INFURA_API_KEY` - Infura node provider (optional)
@@ -285,6 +307,7 @@ npm install
 ## Getting Help
 
 If you encounter issues:
+
 1. Check this guide's Troubleshooting section
 2. Verify all services are running
 3. Check browser console for frontend errors

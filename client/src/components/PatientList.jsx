@@ -7,13 +7,23 @@ import { saveAs } from "file-saver";
 
 const PatientList = () => {
   const [patients, setPatients] = useState([]);
+  const [filteredPatients, setFilteredPatients] = useState([]);
+  const [selectedDepartment, setSelectedDepartment] = useState("All");
+  const [departments, setDepartments] = useState([]);
   const qrCodeRefs = useRef({});
 
   useEffect(() => {
     const fetchPatients = async () => {
       try {
         const response = await axios.get("http://localhost:3000/patients");
-        setPatients(response.data);
+        const allPatients = response.data;
+        setPatients(allPatients);
+
+        // Extract unique departments
+        const uniqueDepts = [
+          ...new Set(allPatients.map((p) => p.department || "Unassigned")),
+        ];
+        setDepartments(["All", ...uniqueDepts.sort()]);
       } catch (error) {
         console.error("Error fetching patients:", error);
       }
@@ -25,6 +35,19 @@ const PatientList = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Filter patients when department selection changes
+  useEffect(() => {
+    if (selectedDepartment === "All") {
+      setFilteredPatients(patients);
+    } else {
+      setFilteredPatients(
+        patients.filter(
+          (p) => (p.department || "Unassigned") === selectedDepartment
+        )
+      );
+    }
+  }, [selectedDepartment, patients]);
 
   const generateQRCodeData = (patient) => {
     return `http://localhost:5173/patient/${patient._id}`;
@@ -53,8 +76,33 @@ const PatientList = () => {
 
   return (
     <div className="text-white flex flex-col justify-center items-center w-full mt-4">
-      <h2 className="text-2xl font-bold mb-4">Patient Records</h2>
-      <div className="overflow-x-auto">
+      <div className="w-full mb-4 flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Patient Records</h2>
+
+        {/* Department Filter Dropdown */}
+        <div className="flex items-center space-x-3">
+          <label className="text-sm font-medium text-purple-300">
+            Filter by Department:
+          </label>
+          <select
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="px-4 py-2 bg-zinc-800 border border-purple-500/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            {departments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </select>
+          <span className="text-sm text-gray-400">
+            ({filteredPatients.length}{" "}
+            {filteredPatients.length === 1 ? "patient" : "patients"})
+          </span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto w-full">
         <table className="w-full bg-gray-900 rounded-lg overflow-hidden">
           <thead className="bg-zinc-800">
             <tr className="text-left text-white">
@@ -63,6 +111,9 @@ const PatientList = () => {
               </th>
               <th className="px-6 py-3 text-lg font-bold uppercase border-b border-gray-700">
                 Name
+              </th>
+              <th className="px-6 py-3 text-lg font-bold uppercase border-b border-gray-700">
+                Department
               </th>
               <th className="px-6 py-3 text-lg font-bold uppercase border-b border-gray-700">
                 Age
@@ -94,7 +145,7 @@ const PatientList = () => {
             </tr>
           </thead>
           <tbody className="divide-y text-light divide-zinc-800">
-            {patients.map((patient) => (
+            {filteredPatients.map((patient) => (
               <tr
                 key={patient._id}
                 className="text-white text-lg bg-zinc-700 hover:bg-zinc-800"
@@ -104,6 +155,11 @@ const PatientList = () => {
                   <Link to={`/patient/${patient._id}`}>
                     {patient.patientName}
                   </Link>
+                </td>
+                <td className="px-6 py-4">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-900/50 text-purple-300 border border-purple-500/30">
+                    {patient.department || "N/A"}
+                  </span>
                 </td>
                 <td className="px-6 py-4">{patient.age}</td>
                 <td className="px-6 py-4">{patient.gender}</td>

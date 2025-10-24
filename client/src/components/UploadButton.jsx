@@ -74,53 +74,65 @@
 // };
 
 // export default UploadButton;
-import { useAddress } from '@thirdweb-dev/react';
-import React, { useState,useRef } from 'react';
+import { useAddress } from "@thirdweb-dev/react";
+import React, { useState, useRef } from "react";
 import { FiFile } from "react-icons/fi";
 import { RxCross2 } from "react-icons/rx";
-import { useContract, useContractWrite, useContractRead } from '@thirdweb-dev/react';
-import { Web3 } from 'web3';
-import axios from 'axios';
+import {
+  useContract,
+  useContractWrite,
+  useContractRead,
+} from "@thirdweb-dev/react";
+import { Web3 } from "web3";
+import axios from "axios";
 
 const web3 = new Web3(window.ethereum);
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
+const CONTRACT_ADDRESS =
+  import.meta.env.VITE_CONTRACT_ADDRESS ||
+  "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
 
 const UploadButton = () => {
   const sender = useAddress();
   const { contract } = useContract(CONTRACT_ADDRESS);
-  const { mutateAsync : addFileToIPFS, isLoading } = useContractWrite(contract,'addFileToIPFS');
+  const { mutateAsync: addFileToIPFS, isLoading } = useContractWrite(
+    contract,
+    "addFileToIPFS"
+  );
 
   const [files, setFiles] = useState([]);
   const [drop, setDrop] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [fileData,setfileData] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState('');
+  const [fileData, setfileData] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [patientName, setPatientName] = useState("");
+  const [patientId, setPatientId] = useState("");
+  const [documentType, setDocumentType] = useState("");
   const inputRef = useRef();
 
-    const handleDragOver = (event) => {
-        event.preventDefault();
-    }
+  const handleDragOver = (event) => {
+    event.preventDefault();
+  };
 
-    const handleDrop = (event) => {
-        event.preventDefault();
-        const droppedFiles = event.dataTransfer.files;
-        setFiles([...files, ...droppedFiles]);
-        // onFileData([...files, ...droppedFiles]);
-    }
+  const handleDrop = (event) => {
+    event.preventDefault();
+    const droppedFiles = event.dataTransfer.files;
+    setFiles([...files, ...droppedFiles]);
+    // onFileData([...files, ...droppedFiles]);
+  };
 
-    const handleFileChange = (event) => {
-      const selectedFiles = event.target.files;
-      setFiles([...files, ...selectedFiles]);
-      // onFileData([...files, ...selectedFiles]);
-    }
+  const handleFileChange = (event) => {
+    const selectedFiles = event.target.files;
+    setFiles([...files, ...selectedFiles]);
+    // onFileData([...files, ...selectedFiles]);
+  };
 
-    const removeFile = (index) => {
-      const updatedFiles = [...files];
-      updatedFiles.splice(index, 1);
-      setFiles(updatedFiles);
-      // onFileData(updatedFiles);
-  }
+  const removeFile = (index) => {
+    const updatedFiles = [...files];
+    updatedFiles.splice(index, 1);
+    setFiles(updatedFiles);
+    // onFileData(updatedFiles);
+  };
 
   //   const handleDrop = (event) => {
   //     event.preventDefault();
@@ -177,11 +189,11 @@ const UploadButton = () => {
   //   }
   // }
 
-  const handleOpen = () =>{
+  const handleOpen = () => {
     setIsOpen(true);
-  }
+  };
 
-  const uploads = (event) =>{
+  const uploads = (event) => {
     event.preventDefault();
     console.log(files.length);
 
@@ -196,11 +208,16 @@ const UploadButton = () => {
       return;
     }
 
+    if (!patientName.trim()) {
+      alert("Please enter the patient name");
+      return;
+    }
+
     if (files.length > 0) {
       setIsUploading(true);
-      setUploadProgress('📤 Step 1/3: Reading file...');
-      console.log("Starting upload process...")
-      
+      setUploadProgress("📤 Step 1/3: Reading file...");
+      console.log("Starting upload process...");
+
       const reader = new FileReader();
 
       reader.onload = function (fileEvent) {
@@ -208,60 +225,137 @@ const UploadButton = () => {
         setfileData(f);
         console.log(fileData);
 
-        setUploadProgress('☁️ Step 2/3: Uploading to IPFS...');
-        
+        setUploadProgress("☁️ Step 2/3: Uploading to IPFS...");
+
         // Upload to IPFS backend on port 5001
         // backend exposes POST /share
-        axios.post("http://localhost:5001/share", { fileData : f})
-        .then(async (res) => {
-          // Backend returns Pinata response with IpfsHash
-          const cid = res.data.IpfsHash;
-          console.log("IPFS CID:", cid);
-          console.log("Sender:", sender);
-          
-          if (!cid) {
-            throw new Error("No CID returned from IPFS upload");
-          }
-          
-          setUploadProgress(`✅ IPFS Upload Complete! CID: ${cid.substring(0, 10)}...`);
-          
-          // Wait a moment to show IPFS success
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          setUploadProgress('⛓️ Step 3/3: Saving to blockchain... Confirm in MetaMask!');
-          
-          // Call smart contract with sender and receiver (self-upload, so sender = receiver)
-          const data = await addFileToIPFS({ args: [sender, sender, cid] });
-          console.log("Transaction:", data);
-          
-          setUploadProgress('✅ Success! Document saved to blockchain!');
-          
-          // Wait to show success message
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          setIsUploading(false);
-          setUploadProgress('');
-          setIsOpen(false);
-          setFiles([]);
-          
-          alert("✅ Document uploaded successfully!\n\nIPFS CID: " + cid + "\n\nGo to Dashboard and click 'Refresh Documents' to see it!");
-        })
-        .catch(err => {
-          console.error("Upload error:", err);
-          console.error("Error response:", err.response?.data);
-          const errorMsg = err.response?.data?.error || err.message || "Unknown error occurred";
-          setUploadProgress('❌ Upload failed!');
-          setIsUploading(false);
-          alert("Failed to upload document: " + errorMsg);
-        })
-          };
-          reader.readAsDataURL(files[0]);
-        }
-  }
+        axios
+          .post("http://localhost:5001/share", { fileData: f })
+          .then(async (res) => {
+            // Backend returns Pinata response with IpfsHash
+            const cid = res.data.IpfsHash;
+            console.log("IPFS CID:", cid);
+            console.log("Sender:", sender);
 
-const handleClose = () => {
-  setIsOpen(false);
-}
+            if (!cid) {
+              throw new Error("No CID returned from IPFS upload");
+            }
+
+            setUploadProgress(
+              `✅ IPFS Upload Complete! CID: ${cid.substring(0, 10)}...`
+            );
+
+            // Wait a moment to show IPFS success
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+
+            setUploadProgress(
+              "⛓️ Step 3/3: Saving to blockchain... Confirm in MetaMask!"
+            );
+
+            // Call smart contract with sender and receiver (self-upload, so sender = receiver)
+            const data = await addFileToIPFS({ args: [sender, sender, cid] });
+            console.log("Transaction:", data);
+
+            // Upload metadata to IPFS as well
+            const metadata = {
+              cid: cid,
+              patientName: patientName,
+              patientId: patientId || "N/A",
+              documentType: documentType || "Medical Document",
+              uploadDate: new Date().toISOString(),
+              uploader: sender,
+            };
+
+            console.log("Uploading metadata to IPFS for CID:", cid, metadata);
+
+            try {
+              // Convert metadata to base64 for upload
+              const metadataJson = JSON.stringify(metadata, null, 2);
+              const metadataBase64 =
+                "data:application/json;base64," + btoa(metadataJson);
+
+              const metadataResponse = await axios.post(
+                "http://localhost:5001/share",
+                {
+                  fileData: metadataBase64,
+                }
+              );
+
+              const metadataCid = metadataResponse.data.IpfsHash;
+              console.log("Metadata uploaded to IPFS, CID:", metadataCid);
+
+              // Store both in localStorage - document CID maps to metadata CID
+              const existingMetadata = JSON.parse(
+                localStorage.getItem(`docMetadata_${sender}`) || "{}"
+              );
+              existingMetadata[cid] = {
+                ...metadata,
+                metadataCid: metadataCid, // Store the IPFS CID of the metadata
+              };
+              localStorage.setItem(
+                `docMetadata_${sender}`,
+                JSON.stringify(existingMetadata)
+              );
+
+              console.log(
+                "Metadata saved. Total documents with metadata:",
+                Object.keys(existingMetadata).length
+              );
+            } catch (metadataError) {
+              console.error(
+                "Failed to upload metadata to IPFS:",
+                metadataError
+              );
+              // Fallback: store only in localStorage
+              const existingMetadata = JSON.parse(
+                localStorage.getItem(`docMetadata_${sender}`) || "{}"
+              );
+              existingMetadata[cid] = metadata;
+              localStorage.setItem(
+                `docMetadata_${sender}`,
+                JSON.stringify(existingMetadata)
+              );
+            }
+
+            setUploadProgress("✅ Success! Document saved to blockchain!");
+
+            // Wait to show success message
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+
+            setIsUploading(false);
+            setUploadProgress("");
+            setIsOpen(false);
+            setFiles([]);
+            setPatientName("");
+            setPatientId("");
+            setDocumentType("");
+
+            alert(
+              `✅ Document uploaded successfully!\n\n👤 Patient: ${patientName}\n📄 IPFS CID: ${cid.substring(
+                0,
+                20
+              )}...\n\n⏳ IMPORTANT: Blockchain confirmation takes 30-60 seconds.\n\n📋 Next Steps:\n1. Wait 1 minute for blockchain confirmation\n2. Go to Dashboard\n3. Click "Refresh Documents" button\n\nYour document will then appear!`
+            );
+          })
+          .catch((err) => {
+            console.error("Upload error:", err);
+            console.error("Error response:", err.response?.data);
+            const errorMsg =
+              err.response?.data?.error ||
+              err.message ||
+              "Unknown error occurred";
+            setUploadProgress("❌ Upload failed!");
+            setIsUploading(false);
+            alert("Failed to upload document: " + errorMsg);
+          });
+      };
+      reader.readAsDataURL(files[0]);
+    }
+  };
+
+  const handleClose = () => {
+    setIsOpen(false);
+  };
   return (
     <>
       <button
@@ -271,73 +365,151 @@ const handleClose = () => {
         Upload
       </button>
       {isOpen && (
-        <div
-          className="fixed flex flex-col inset-0 bg-black/50 backdrop-blur-sm gap-4 justify-center items-center z-50" 
-        >
-           {!drop && (
-                <div className="flex z-5 flex-col h-[400px] justify-center items-center font-code  border-neutral-400 border-2 border-dashed p-3"
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                >
-                    <h4 className="text-white button text-xl">Drag and drop to upload</h4>
-                    <h6 className='text-xl button'>or</h6>
-                    <br />
-                    <input
-                        type="file"
-                        hidden
-                        multiple
-                        onChange={handleFileChange}
-                        ref={inputRef}
-                    />
-                    <button onClick={() => inputRef.current.click()} className="bg-gray-700 w-24 h- px-2 rounded-md border-gray-400 border-2">upload</button>
-                </div>
-            )}
+        <div className="fixed flex flex-col inset-0 bg-black/50 backdrop-blur-sm gap-4 justify-center items-center z-50">
           {!drop && (
-                <div className="overflow-x-auto Whitespace-nowrap">
-                    <div className="flex overflow-x-auto" >
-                        {files.map((file, index) => (
-                            <div key={index} className="file-item border-[1px] border-zinc-500 bg-zinc-700 text-white p-2 rounded-md m-1 flex items-center justify-between">
-                            <div className="file-info flex items-center gap-2">
-                                <FiFile className="text-zinc-200" /> {/* File icon */}
-                                <span className="file-name text-xs text-zinc-200">{file.name}</span>
-                            </div>
-                            <button className="remove-button" onClick={() => removeFile(index)}>
-                                <RxCross2 className="text-zinc-200 hover:text-red-500" />
-                            </button>
-                        </div>
-                        ))}
-                    </div>
+            <div
+              className="flex z-5 flex-col h-[400px] w-[500px] justify-center items-center font-code border-neutral-400 border-2 border-dashed p-6 bg-zinc-900"
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            >
+              <h4 className="text-white button text-xl mb-4">
+                Upload Medical Document
+              </h4>
+
+              {/* Patient Information Form */}
+              <div className="w-full space-y-3 mb-4">
+                <div>
+                  <label className="text-white text-sm font-semibold block mb-1">
+                    Patient Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={patientName}
+                    onChange={(e) => setPatientName(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter patient name"
+                    required
+                  />
                 </div>
-            )}
-            
-            {/* Progress Indicator */}
-            {isUploading && (
-              <div className="bg-blue-900 border border-blue-500 text-white px-6 py-4 rounded-lg shadow-lg min-w-[20rem] text-center">
-                <div className="flex items-center justify-center gap-3 mb-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                  <span className="font-semibold">Uploading...</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-white text-sm font-semibold block mb-1">
+                      Patient ID (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={patientId}
+                      onChange={(e) => setPatientId(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="e.g., P-12345"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-white text-sm font-semibold block mb-1">
+                      Document Type
+                    </label>
+                    <select
+                      value={documentType}
+                      onChange={(e) => setDocumentType(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="">Select type</option>
+                      <option value="X-Ray">X-Ray</option>
+                      <option value="CT Scan">CT Scan</option>
+                      <option value="MRI">MRI</option>
+                      <option value="Blood Test">Blood Test</option>
+                      <option value="Prescription">Prescription</option>
+                      <option value="Lab Report">Lab Report</option>
+                      <option value="Discharge Summary">
+                        Discharge Summary
+                      </option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
                 </div>
-                <p className="text-sm">{uploadProgress}</p>
               </div>
-            )}
-            
-            <div className='flex justify-between w-[18rem]'>
-            <button 
-              onClick={uploads} 
+
+              <div className="border-t border-zinc-600 w-full pt-4">
+                <h6 className="text-center text-zinc-400 text-sm mb-2">
+                  Drag and drop file here or
+                </h6>
+                <input
+                  type="file"
+                  hidden
+                  multiple
+                  onChange={handleFileChange}
+                  ref={inputRef}
+                />
+                <button
+                  onClick={() => inputRef.current.click()}
+                  className="bg-orange-600 hover:bg-orange-700 w-full px-4 py-2 rounded-md border-orange-500 border-2 text-white font-semibold"
+                >
+                  Browse Files
+                </button>
+              </div>
+            </div>
+          )}
+          {!drop && (
+            <div className="overflow-x-auto Whitespace-nowrap">
+              <div className="flex overflow-x-auto">
+                {files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="file-item border-[1px] border-zinc-500 bg-zinc-700 text-white p-2 rounded-md m-1 flex items-center justify-between"
+                  >
+                    <div className="file-info flex items-center gap-2">
+                      <FiFile className="text-zinc-200" /> {/* File icon */}
+                      <span className="file-name text-xs text-zinc-200">
+                        {file.name}
+                      </span>
+                    </div>
+                    <button
+                      className="remove-button"
+                      onClick={() => removeFile(index)}
+                    >
+                      <RxCross2 className="text-zinc-200 hover:text-red-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Progress Indicator */}
+          {isUploading && (
+            <div className="bg-blue-900 border border-blue-500 text-white px-6 py-4 rounded-lg shadow-lg min-w-[20rem] text-center">
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                <span className="font-semibold">Uploading...</span>
+              </div>
+              <p className="text-sm">{uploadProgress}</p>
+            </div>
+          )}
+
+          <div className="flex justify-between w-[18rem]">
+            <button
+              onClick={uploads}
               disabled={isUploading}
-              className={`rounded-md p-3 ${isUploading ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-500 hover:border-[1px]'}`}
-            > 
-              {isUploading ? '⏳ Uploading...' : 'Submit'}
+              className={`rounded-md p-3 ${
+                isUploading
+                  ? "bg-gray-600 cursor-not-allowed"
+                  : "bg-orange-700 hover:bg-orange-500 hover:border-[1px]"
+              }`}
+            >
+              {isUploading ? "⏳ Uploading..." : "Submit"}
             </button>
-            <button 
-              onClick={handleClose} 
+            <button
+              onClick={handleClose}
               disabled={isUploading}
-              className={`rounded-md text-white p-3 ${isUploading ? 'bg-gray-600 cursor-not-allowed' : 'bg-orange-700 hover:bg-orange-500 hover:border-[1px]'}`}
+              className={`rounded-md text-white p-3 ${
+                isUploading
+                  ? "bg-gray-600 cursor-not-allowed"
+                  : "bg-orange-700 hover:bg-orange-500 hover:border-[1px]"
+              }`}
             >
               Close
-            </button> 
-            </div>
-          
+            </button>
+          </div>
         </div>
       )}
     </>

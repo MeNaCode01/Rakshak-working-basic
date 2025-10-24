@@ -42,6 +42,7 @@ npx hardhat run scripts/deploy.js --network sepolia
 ```
 
 This will:
+
 - Deploy the VoteMain contract to Sepolia
 - Save the contract address in `deployment-info.json`
 - Print the contract address (save this!)
@@ -51,7 +52,9 @@ This will:
 After deployment, you'll get a contract address like: `0x1234...5678`
 
 Update the frontend:
+
 1. Create/update `client/.env`:
+
 ```env
 VITE_CONTRACT_ADDRESS=0xYourContractAddressHere
 ```
@@ -61,6 +64,7 @@ VITE_CONTRACT_ADDRESS=0xYourContractAddressHere
 ## Step 5: Test the Contract
 
 You can verify your contract on Etherscan:
+
 1. Go to https://sepolia.etherscan.io/
 2. Search for your contract address
 3. Check transactions and contract state
@@ -68,15 +72,18 @@ You can verify your contract on Etherscan:
 ## Troubleshooting
 
 ### "Insufficient funds"
+
 - Make sure your wallet has Sepolia ETH
 - Get free testnet ETH from faucets listed above
 
 ### "Invalid private key"
+
 - Check that private key is copied correctly
 - Remove any spaces or quotes
 - Should be 64 characters (without 0x prefix)
 
 ### "Network error"
+
 - Check your internet connection
 - Try a different RPC URL (Alchemy/Infura)
 - Wait a few seconds and try again
@@ -91,6 +98,7 @@ You can verify your contract on Etherscan:
 ## Next Steps
 
 After deployment:
+
 1. Test document upload in frontend
 2. Verify IPFS integration
 3. Test document sharing between addresses

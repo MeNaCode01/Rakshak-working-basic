@@ -9,6 +9,7 @@ A comprehensive full-stack healthcare platform with blockchain integration and A
 ### Automated Start (Recommended)
 
 Just double-click:
+
 ```
 START-ALL.bat
 ```
@@ -16,6 +17,7 @@ START-ALL.bat
 This starts **only 3 services** (Records, Backend, Frontend). The **ML service auto-starts** when you click "Start Advanced Disease Prediction" in the Workstation!
 
 **Why only 3 terminals?**
+
 - **Records** (minimized): Handles patient data in MongoDB
 - **Backend** (minimized): Manages IPFS + auto-starts ML service
 - **Frontend** (visible): Your React app at http://localhost:5173
@@ -27,6 +29,7 @@ This starts **only 3 services** (Records, Backend, Frontend). The **ML service a
 **TL;DR - 2 Steps to Run**
 
 1. **Install dependencies:**
+
    ```cmd
    cd client && npm install
    cd ..\backend && npm install
@@ -35,11 +38,13 @@ This starts **only 3 services** (Records, Backend, Frontend). The **ML service a
    ```
 
 2. **Setup environment variables:**
+
    - Copy `records/.env.example` to `records/.env`
    - Add your MongoDB connection string to `records/.env`
    - Verify `client/.env.development` has correct URLs
 
 3. **Run services** (3 terminals):
+
    ```cmd
    # Terminal 1 - Records
    cd records && npm start
@@ -58,6 +63,7 @@ This starts **only 3 services** (Records, Backend, Frontend). The **ML service a
 ### Stop All Services
 
 Double-click:
+
 ```
 STOP-ALL.bat
 ```
@@ -76,11 +82,11 @@ STOP-ALL.bat
 
 ## 🔑 Required API Keys
 
-| Variable | Required | Where to Get |
-|----------|----------|--------------|
-| `MONGO_URI` | ✅ Yes | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) (free tier) |
-| `VITE_TEMPLATE_CLIENT_ID` | ⚠️ Optional | OAuth provider (Google/Auth0) if using auth |
-| `PRIVATE_KEY` | ⚠️ Optional | Your wallet (only for blockchain deployment) |
+| Variable                  | Required    | Where to Get                                                     |
+| ------------------------- | ----------- | ---------------------------------------------------------------- |
+| `MONGO_URI`               | ✅ Yes      | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) (free tier) |
+| `VITE_TEMPLATE_CLIENT_ID` | ⚠️ Optional | OAuth provider (Google/Auth0) if using auth                      |
+| `PRIVATE_KEY`             | ⚠️ Optional | Your wallet (only for blockchain deployment)                     |
 
 ---
 
@@ -95,6 +101,7 @@ STOP-ALL.bat
 ## 🛠️ Tech Stack
 
 **Frontend:**
+
 - React 18 + Vite
 - Tailwind CSS
 - Web3.js / Ethers.js
@@ -102,17 +109,20 @@ STOP-ALL.bat
 - Chart.js, Framer Motion
 
 **Backend:**
+
 - Node.js + Express
 - MongoDB + Mongoose
 - IPFS (decentralized storage)
 - CORS, Body-parser
 
 **Blockchain:**
+
 - Hardhat
 - zkSync (Layer 2)
 - Solidity 0.8.17
 
 **ML/AI:**
+
 - Python 3.8+
 - Streamlit
 - scikit-learn, XGBoost
@@ -122,11 +132,11 @@ STOP-ALL.bat
 
 ## 🌐 Default Ports
 
-| Service | Port | URL |
-|---------|------|-----|
-| Frontend | 5173 | http://localhost:5173 |
-| Backend | 3000 | http://localhost:3000 |
-| Records | 5500 | http://localhost:5500 |
+| Service    | Port | URL                   |
+| ---------- | ---- | --------------------- |
+| Frontend   | 5173 | http://localhost:5173 |
+| Backend    | 3000 | http://localhost:3000 |
+| Records    | 5500 | http://localhost:5500 |
 | ML Service | 8501 | http://localhost:8501 |
 
 ---
@@ -138,6 +148,7 @@ STOP-ALL.bat
 - MongoDB Atlas account ([Sign up](https://www.mongodb.com/cloud/atlas))
 
 Run the setup checker:
+
 ```cmd
 check-setup.bat
 ```
