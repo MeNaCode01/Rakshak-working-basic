@@ -1,4 +1,3 @@
-
 import { benefits } from "../constants/index";
 import Heading from "./Heading";
 import Section from "./Section";
@@ -19,12 +18,10 @@ import { IoCloseSharp } from "react-icons/io5";
 import { imgFile } from "../assets";
 import axios from "axios";
 
-const url = process.env.REACT_APP_BACKEND_URL;
-const cAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
+
 const Dashboard = () => {
-  const { contract, isLoading } = useContract(
-   `0xBC7E42dB009FF1F6FEc7d81370a081fdfe47b978`
-  );
+  const { contract, isLoading } = useContract(CONTRACT_ADDRESS);
   const address = useAddress();
   console.log(address);
   const [msg, setMsg] = useState([]);
@@ -44,13 +41,13 @@ const Dashboard = () => {
 
   const handleBoxClick = async (item) => {
     try {
-      console.log(item.cid);
-      
-      const url = `https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/${item.cid}?pinataGatewayToken=zPkBFUwZXAHKaaAPXuq5o5AEEqFgqV9eXkrqhnSiRfvNZnwmTuB-fDHfRvyVIdDv`;
-      window.open(url,'_blank');
-      console.log(done);
+      console.log("Opening document with CID:", item.cid);
+      // Use public IPFS gateway
+      const url = `https://ipfs.io/ipfs/${item.cid}`;
+      window.open(url, "_blank");
     } catch (error) {
-      console.log(error);
+      console.error("Error opening document:", error);
+      alert("Failed to open document");
     }
   };
 
@@ -75,34 +72,105 @@ const Dashboard = () => {
     return utcString;
   };
 
-  const convertUTC = (bytes32) => {
-    const decimal = bytes32ToDecimal(bytes32);
-    const utcDateTime = decimalToUTC(decimal); 
-    const utcDate = new Date(utcDateTime);
-    const istDate = utcDate.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata",
-    }); // Convert to IST
-    return istDate;
+  // Convert either bytes32 timestamp or numeric timestamp (seconds) to IST string
+  const convertUTC = (value) => {
+    try {
+      let seconds = 0;
+      if (typeof value === 'string' && value.startsWith('0x')) {
+        // bytes32 hex
+        seconds = Number(bytes32ToDecimal(value));
+      } else if (typeof value === 'string' && /^[0-9]+$/.test(value)) {
+        seconds = Number(value);
+      } else if (typeof value === 'number') {
+        seconds = value;
+      } else if (value && value._hex) {
+        // ethers BigNumber
+        seconds = Number(value._hex ? BigInt(value._hex).toString() : value.toString());
+      } else {
+        return 'Unknown time';
+      }
+
+      const utcDate = new Date(seconds * 1000);
+      const istDate = utcDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+      return istDate;
+    } catch (err) {
+      console.error('convertUTC error:', err);
+      return 'Invalid time';
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      if (!isLoading && contract && address) {
+        // Fetch indexed events from backend (includes both sent and received)
+        try {
+          const resp = await axios.get(`http://localhost:5001/files/${address}`);
+          const events = resp.data || [];
+          // Normalize to the shape used by UI: { cid, sender, receiver, timestamp }
+          const normalized = events.map((e) => ({
+            cid: e.cid,
+            sender: e.sender,
+            receiver: e.receiver,
+            timestamp: e.timestamp,
+          }));
+          setMsg(normalized);
+          console.log('Documents refreshed from events:', normalized.length);
+          alert(`Loaded ${normalized.length} documents (from events)`);
+        } catch (err) {
+          console.warn('Failed to fetch events from backend, falling back to contract.getFiles', err.message);
+          const data = await contract.call('getFiles', [address]);
+          setMsg(data);
+          console.log('Documents refreshed (contract):', data.length);
+          alert(`Loaded ${data.length} documents (from contract)`);
+        }
+      }
+    } catch (error) {
+      console.error("Error refreshing documents:", error);
+      alert("Failed to refresh documents");
+    }
   };
 
   return (
     <Section id="features" className="min-h-screen">
       <UploadButton className="fixed bottom-4 right-4 z-100" />
       <div className="container relative z-2">
-        <Heading
-          className="md:max-w-md lg:max-w-2xl"
-          title="Your secured documents"
-        />
+        <div className="flex justify-between items-center mb-8">
+          <Heading
+            className="md:max-w-md lg:max-w-2xl"
+            title="Your secured documents"
+          />
+          <button
+            onClick={handleRefresh}
+            className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-700 text-white font-bold rounded-lg hover:from-orange-600 hover:to-orange-800 transition-all"
+          >
+            Refresh Documents
+          </button>
+        </div>
 
-        <div className="flex flex-wrap gap-10 mb-10">
-          {msg.map((item, index) => (
+        {msg.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-gray-400 text-xl">No documents uploaded yet</p>
+            <p className="text-gray-500 mt-4">Click the Upload button to add your first document</p>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-10 mb-10">
+            {msg.map((item, index) => (
             <div
               className="block relative p-0.5 bg-no-repeat bg-[length:100%_100%] md:max-w-[24rem]"
               key={index}
               onClick={() => handleBoxClick(item)}
             >
               <div className="relative z-2 flex flex-col min-h-[12rem] p-[2.4rem] cursor-pointer">
-                <h5 className="text-lg mb-2 break-words">{item.cid}</h5>
+                <h5 className="text-xs font-bold text-orange-500 mb-2">Document #{index + 1}</h5>
+                <p className="text-sm mb-2 text-gray-400 break-all">
+                  <span className="font-semibold">CID:</span> {item.cid.substring(0, 20)}...
+                </p>
+                <p className="text-sm mb-2 text-gray-400">
+                  <span className="font-semibold">From:</span> {item.sender?.substring(0, 10)}...
+                </p>
+                <p className="text-sm mb-2 text-gray-400">
+                  <span className="font-semibold">To:</span> {item.receiver?.substring(0, 10)}...
+                </p>
                 <p className="body-2 mb-6 text-n-3">
                   {convertUTC(item.timestamp)}
                 </p>
@@ -111,7 +179,7 @@ const Dashboard = () => {
                     src={benefitIcon3}
                     width={48}
                     height={48}
-                    alt={item.title}
+                    alt="document"
                   />
                   <p className="ml-auto font-code text-xs hover:underline font-bold text-n-1 uppercase tracking-wider">
                     Open document
@@ -137,7 +205,8 @@ const Dashboard = () => {
               <ClipPath />
             </div>
           ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {isPopupOpen && (
@@ -157,12 +226,22 @@ const Dashboard = () => {
             </div>
             <div className="p-4">
               {selectedImage && (
-                <iframe src="https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/QmUtMaPZACmApkw9h9N1bLd6avr78kkgqyhAgfRa8ccdP3" height="100px" width="100px"></iframe>
+                <iframe
+                  src="https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/QmUtMaPZACmApkw9h9N1bLd6avr78kkgqyhAgfRa8ccdP3"
+                  height="100px"
+                  width="100px"
+                ></iframe>
               )}
               {!selectedImage && (
                 <>
-                                <iframe src="https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/QmUtMaPZACmApkw9h9N1bLd6avr78kkgqyhAgfRa8ccdP3" height="100px" width="100px"></iframe>
-                <p className="text-gray-500 text-center">No image selected.</p>
+                  <iframe
+                    src="https://amaranth-added-parrotfish-511.mypinata.cloud/ipfs/QmUtMaPZACmApkw9h9N1bLd6avr78kkgqyhAgfRa8ccdP3"
+                    height="100px"
+                    width="100px"
+                  ></iframe>
+                  <p className="text-gray-500 text-center">
+                    No image selected.
+                  </p>
                 </>
               )}
             </div>

@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 
 //gateway - https://amaranth-added-parrotfish-511.mypinata.cloud
 import axios from 'axios';
+import { ethers } from 'ethers';
 import FormData from 'form-data';
 const JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJmNjU0ZTNkNi03ZGY0LTQ0NzEtODJlMy05MjNjMDUxNzVmNDQiLCJlbWFpbCI6ImRhdmVkbWoxNzI1QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImlkIjoiRlJBMSIsImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxfSx7ImlkIjoiTllDMSIsImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxfV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiIwOTk5OTE3NjlmMzNjYWRjNjFhMiIsInNjb3BlZEtleVNlY3JldCI6IjcwZjVmZjlkOWU2OGRhM2I3NjUyMWI5MzVlMzk3ZDk2YzUwOTU0OTgyZGU5YTQ5NTVkMTk0ZTRmOTg3ZDMyODYiLCJpYXQiOjE3MTcxNjY2NDV9.AnzcPJ3F2ImEnH2rMrXmSCHjo-E8HjrDx8rAhxrCxVw";
 
@@ -147,6 +148,45 @@ app.post('/share', async (req, res) => {
         
     } catch (error) {
         console.error('Error processing request:', error);
+    }
+});
+
+// GET /files/:address - returns event-indexed files where address is sender or receiver
+app.get('/files/:address', async (req, res) => {
+    try {
+        const target = req.params.address;
+        // Contract address - use env or fallback if not set
+        const CONTRACT_ADDRESS = process.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
+        // Minimal ABI to decode the event
+        const abi = [
+            "event addedFileToIPFS(address _sender, address _receiver, string _cid)"
+        ];
+
+        // Use a public Sepolia RPC that supports CORS for server-side requests
+        const provider = new ethers.providers.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+        const contractReader = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+
+        // Query all events (no indexed topics in the event) - filter in JS
+        const events = await contractReader.queryFilter(contractReader.filters.addedFileToIPFS(), 0, 'latest');
+
+        const results = [];
+        for (const ev of events) {
+            const sender = ev.args?._sender;
+            const receiver = ev.args?._receiver;
+            const cid = ev.args?._cid;
+            // filter by address (case-insensitive)
+            if (!sender || !receiver) continue;
+            if (sender.toLowerCase() === target.toLowerCase() || receiver.toLowerCase() === target.toLowerCase()) {
+                // fetch block timestamp
+                const block = await provider.getBlock(ev.blockNumber);
+                results.push({ sender, receiver, cid, blockNumber: ev.blockNumber, timestamp: block.timestamp });
+            }
+        }
+
+        res.status(200).json(results);
+    } catch (error) {
+        console.error('Error fetching events:', error);
+        res.status(500).json({ error: 'Failed to fetch files from events', details: error.message });
     }
 });
 

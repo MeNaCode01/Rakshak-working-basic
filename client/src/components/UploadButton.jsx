@@ -83,10 +83,11 @@ import { Web3 } from 'web3';
 import axios from 'axios';
 
 const web3 = new Web3(window.ethereum);
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xa3056456Ff179DF495B6a4301C0342F49ccEF87e";
 
 const UploadButton = () => {
   const sender = useAddress();
-  const { contract } = useContract("0xBC7E42dB009FF1F6FEc7d81370a081fdfe47b978");
+  const { contract } = useContract(CONTRACT_ADDRESS);
   const { mutateAsync : addFileToIPFS, isLoading } = useContractWrite(contract,'addFileToIPFS');
 
   const [files, setFiles] = useState([]);
@@ -191,19 +192,24 @@ const UploadButton = () => {
             setfileData(f);
             console.log(fileData);
 
-            // https://bd-one-omega.vercel.app/
-            // axios.post("http://localhost:3000/share", { fileData : f})
-
-            axios.post("http://localhost:3000/share", { fileData : f})
+            // Upload to IPFS backend on port 5001
+            // backend exposes POST /share
+            axios.post("http://localhost:5001/share", { fileData : f})
             .then(async (res) => {
-              const cid = res.data.IpfsHash;
-              console.log(cid);
-              console.log(sender);
-              const data = await addFileToIPFS({ args: [sender,cid] });
-              console.log(data);
+              const cid = res.data.cid;
+              console.log("IPFS CID:", cid);
+              console.log("Sender:", sender);
+              
+              // Call smart contract with sender and receiver (self-upload, so sender = receiver)
+              const data = await addFileToIPFS({ args: [sender, sender, cid] });
+              console.log("Transaction:", data);
+              alert("Document uploaded successfully to blockchain!");
+              setIsOpen(false);
+              setFiles([]);
             })
             .catch(err => {
-              console.log(err);
+              console.error("Upload error:", err);
+              alert("Failed to upload document: " + err.message);
             })
           };
           reader.readAsDataURL(files[0]);
