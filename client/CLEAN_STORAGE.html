@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clean Storage - Rakshak</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        button {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #dc2626;
+        }
+        .safe {
+            background: #22c55e;
+        }
+        .safe:hover {
+            background: #16a34a;
+        }
+        .info {
+            background: #3b82f6;
+            cursor: default;
+            padding: 10px 20px;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        pre {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        h1 { color: #ef4444; }
+        h2 { color: #f97316; margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <h1>🧹 Rakshak Storage Cleaner</h1>
+    
+    <h2>📊 Current Storage Status</h2>
+    <div id="status"></div>
+    
+    <h2>🎯 Cleaning Options</h2>
+    
+    <p><strong>⚠️ Important:</strong> These operations only clear client-side data. Blockchain data is immutable and cannot be deleted.</p>
+    
+    <button class="safe" onclick="viewStorage()">👁️ View All Storage</button>
+    <button onclick="clearDeletedDocs()">🗑️ Clear Deleted Docs List Only</button>
+    <button onclick="clearMetadata()">📋 Clear Document Metadata Only</button>
+    <button onclick="clearAllRakshak()">🧹 Clear All Rakshak Data</button>
+    <button onclick="clearEverything()">💣 CLEAR EVERYTHING (including wallet)</button>
+    
+    <div id="output"></div>
+    
+    <script>
+        function getWalletAddress() {
+            // Try to find wallet address from any stored keys
+            const keys = Object.keys(localStorage);
+            for (let key of keys) {
+                if (key.startsWith('deletedDocs_') || key.startsWith('docMetadata_')) {
+                    return key.split('_')[1];
+                }
+            }
+            return null;
+        }
+        
+        function showStatus() {
+            const address = getWalletAddress();
+            const deletedKey = address ? `deletedDocs_${address}` : null;
+            const metadataKey = address ? `docMetadata_${address}` : null;
+            
+            let html = '<pre>';
+            html += `🔑 Detected Wallet: ${address || 'Not found'}\n\n`;
+            
+            if (address) {
+                const deleted = localStorage.getItem(deletedKey);
+                const metadata = localStorage.getItem(metadataKey);
+                
+                if (deleted) {
+                    const deletedArr = JSON.parse(deleted);
+                    html += `🗑️ Deleted CIDs: ${deletedArr.length}\n`;
+                } else {
+                    html += `🗑️ Deleted CIDs: 0\n`;
+                }
+                
+                if (metadata) {
+                    const metaObj = JSON.parse(metadata);
+                    html += `📋 Documents with metadata: ${Object.keys(metaObj).length}\n`;
+                } else {
+                    html += `📋 Documents with metadata: 0\n`;
+                }
+            }
+            
+            html += `\n📦 Total localStorage items: ${localStorage.length}`;
+            html += '</pre>';
+            
+            document.getElementById('status').innerHTML = html;
+        }
+        
+        function viewStorage() {
+            const keys = Object.keys(localStorage);
+            let html = '<h3>📦 All LocalStorage Contents:</h3><pre>';
+            
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (key.includes('deleted') || key.includes('Metadata')) {
+                    html += `\n${key}:\n${value}\n`;
+                } else {
+                    html += `\n${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}\n`;
+                }
+            });
+            
+            html += '</pre>';
+            document.getElementById('output').innerHTML = html;
+        }
+        
+        function clearDeletedDocs() {
+            const address = getWalletAddress();
+            if (!address) {
+                alert('❌ No wallet address found');
+                return;
+            }
+            
+            if (confirm('Clear deleted documents list?\n\nThis will make all previously deleted documents visible again.')) {
+                localStorage.removeItem(`deletedDocs_${address}`);
+                alert('✅ Deleted documents list cleared!\n\nRefresh your dashboard to see all blockchain documents.');
+                showStatus();
+            }
+        }
+        
+        function clearMetadata() {
+            const address = getWalletAddress();
+            if (!address) {
+                alert('❌ No wallet address found');
+                return;
+            }
+            
+            if (confirm('Clear document metadata?\n\nThis will remove patient names, IDs, and document types. Blockchain data is unaffected.')) {
+                localStorage.removeItem(`docMetadata_${address}`);
+                alert('✅ Document metadata cleared!\n\nDocuments will still show but without patient names.');
+                showStatus();
+            }
+        }
+        
+        function clearAllRakshak() {
+            const address = getWalletAddress();
+            if (!address) {
+                alert('❌ No wallet address found');
+                return;
+            }
+            
+            if (confirm('Clear ALL Rakshak data?\n\n- Deleted documents list\n- Document metadata\n\nBlockchain data is unaffected. Wallet connection preserved.')) {
+                localStorage.removeItem(`deletedDocs_${address}`);
+                localStorage.removeItem(`docMetadata_${address}`);
+                alert('✅ All Rakshak data cleared!\n\nYour dashboard will now show all blockchain documents without metadata.');
+                showStatus();
+            }
+        }
+        
+        function clearEverything() {
+            if (confirm('⚠️ DANGER: Clear EVERYTHING?\n\nThis will:\n- Remove deleted docs list\n- Remove metadata\n- Remove wallet connection\n- Remove all localStorage data\n\nYou will need to reconnect your wallet!')) {
+                if (confirm('Are you ABSOLUTELY sure? This cannot be undone!')) {
+                    localStorage.clear();
+                    alert('💣 Everything cleared!\n\nReload the page and reconnect your wallet.');
+                    showStatus();
+                }
+            }
+        }
+        
+        // Show status on load
+        showStatus();
+    </script>
+</body>
+</html>

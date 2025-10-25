@@ -36,7 +36,83 @@ const Dashboard = () => {
   const [docMetadata, setDocMetadata] = useState({});
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("");
-  const [showDuplicates, setShowDuplicates] = useState(false);
+
+  // Multiple IPFS gateways for fallback
+  const IPFS_GATEWAYS = [
+    'https://gateway.pinata.cloud/ipfs/',
+    'https://cloudflare-ipfs.com/ipfs/',
+    'https://ipfs.io/ipfs/',
+    'https://dweb.link/ipfs/'
+  ];
+
+  // Function to fetch metadata from IPFS with multiple gateway fallbacks
+  const fetchMetadataFromIPFS = async (cid, metadataCid) => {
+    // Try each gateway with a short timeout
+    for (const gateway of IPFS_GATEWAYS) {
+      try {
+        const response = await axios.get(`${gateway}${metadataCid}`, {
+          timeout: 5000 // 5 second timeout per gateway
+        });
+        console.log(`✅ Fetched metadata from ${gateway} for ${cid.substring(0, 20)}...`);
+        return response.data;
+      } catch (error) {
+        console.log(`⚠️ Failed to fetch from ${gateway}, trying next...`);
+        continue; // Try next gateway
+      }
+    }
+    console.error(`❌ All IPFS gateways failed for ${metadataCid}`);
+    return null;
+  };
+
+  // Load metadata - PRIORITIZE localStorage, use IPFS only as fallback
+  const loadAllMetadata = async (documents) => {
+    if (!address) return;
+
+    // Load from localStorage as PRIMARY source
+    const localMetadata = JSON.parse(
+      localStorage.getItem(`docMetadata_${address}`) || "{}"
+    );
+    console.log(`📦 Loaded ${Object.keys(localMetadata).length} metadata entries from localStorage`);
+    
+    const mergedMetadata = { ...localMetadata };
+
+    // Only try IPFS if localStorage is completely empty for a document
+    // This prevents IPFS failures from wiping existing metadata
+    for (const doc of documents) {
+      // Skip if we already have metadata in localStorage
+      if (mergedMetadata[doc.cid]) {
+        console.log(`✅ Using cached metadata for ${doc.cid.substring(0, 20)}...`);
+        continue;
+      }
+
+      // Only try IPFS fetch if no localStorage metadata exists
+      console.log(`🔍 No cached metadata for ${doc.cid.substring(0, 20)}..., trying IPFS...`);
+      try {
+        const metadataCid = `${doc.cid}_metadata`;
+        const ipfsMetadata = await fetchMetadataFromIPFS(doc.cid, metadataCid);
+        if (ipfsMetadata) {
+          mergedMetadata[doc.cid] = ipfsMetadata;
+          console.log(`✅ Found metadata on IPFS for ${doc.cid.substring(0, 20)}...`);
+        } else {
+          console.log(`ℹ️ No IPFS metadata found for ${doc.cid.substring(0, 20)}...`);
+        }
+      } catch (error) {
+        // Metadata not found on IPFS, that's okay - don't show as error
+        console.log(`ℹ️ Could not fetch IPFS metadata for ${doc.cid.substring(0, 20)}...`);
+      }
+    }
+
+    setDocMetadata(mergedMetadata);
+    console.log(`📊 Final metadata count: ${Object.keys(mergedMetadata).length}`);
+
+    // Update localStorage with any new metadata found from IPFS
+    localStorage.setItem(
+      `docMetadata_${address}`,
+      JSON.stringify(mergedMetadata)
+    );
+
+    return mergedMetadata;
+  };
 
   // Load deleted documents and metadata from localStorage on mount
   useEffect(() => {
@@ -61,111 +137,74 @@ const Dashboard = () => {
           setIsLoadingDocs(true);
           setLoadingMessage("📡 Connecting to blockchain...");
 
-          console.log("=== DASHBOARD LOADING ===");
-          console.log("👤 Wallet Address:", address);
-          console.log("📜 Contract Address:", CONTRACT_ADDRESS);
+          // SIMPLIFIED: Only show files uploaded directly from Document Sentinel
+          // Transferred files will be shown in Document Transfer page instead
+          const uploadedData = await contract.call("getFiles", [address]);
+          console.log("� Documents uploaded from Document Sentinel:", uploadedData.length);
+          console.log("� Uploaded documents:", uploadedData.map(d => ({ 
+            cid: d.cid?.substring(0, 20) + '...',
+            receiver: d.receiver?.substring(0, 10) + '...'
+          })));
 
-          const data = await contract.call("getFiles", [address]);
-          console.log("📦 Raw blockchain data:", data);
-          console.log("📊 Total documents on blockchain:", data.length);
+          setLoadingMessage("🔍 Filtering and sorting documents...");
 
-          // Count unique CIDs on blockchain
-          const uniqueCIDs = [...new Set(data.map((doc) => doc.cid))];
-          console.log("🔑 Unique CIDs on blockchain:", uniqueCIDs.length);
-          console.log("📋 Deleted CID list:", deletedDocs);
-          console.log("🔢 Deleted CIDs count:", deletedDocs.length);
-
-          setLoadingMessage("🔍 Filtering documents...");
+          // Sort by timestamp - newest first (descending order)
+          const sortedData = [...uploadedData].sort((a, b) => {
+            const timestampA = bytes32ToDecimal(a.timestamp);
+            const timestampB = bytes32ToDecimal(b.timestamp);
+            return Number(timestampB) - Number(timestampA); // Newest first
+          });
 
           // Filter out deleted documents
-          const filtered = data.filter((doc) => !deletedDocs.includes(doc.cid));
-
-          // Sort by timestamp (newest first) before setting state
-          const sorted = [...filtered].sort((a, b) => {
-            const timeA =
-              typeof a.timestamp === "object"
-                ? Number(a.timestamp)
-                : a.timestamp;
-            const timeB =
-              typeof b.timestamp === "object"
-                ? Number(b.timestamp)
-                : b.timestamp;
-            return timeB - timeA;
-          });
-
-          setMsg(sorted);
-
-          // Log the 3 most recent documents
-          if (sorted.length > 0) {
-            console.log("📅 Most recent 3 documents:");
-            sorted.slice(0, 3).forEach((doc, i) => {
-              const time =
-                typeof doc.timestamp === "object"
-                  ? Number(doc.timestamp)
-                  : doc.timestamp;
-              const date = new Date(time * 1000).toLocaleString();
-              console.log(
-                `  ${i + 1}. CID: ${doc.cid.substring(0, 20)}... at ${date}`
-              );
-            });
-          }
-
-          // Count duplicates by CID
-          const cidCounts = {};
-          filtered.forEach((doc) => {
-            cidCounts[doc.cid] = (cidCounts[doc.cid] || 0) + 1;
-          });
-
-          const duplicates = Object.entries(cidCounts).filter(
-            ([cid, count]) => count > 1
+          const filtered = sortedData.filter(
+            (doc) => !deletedDocs.includes(doc.cid)
           );
-
-          // Show how many blockchain entries are hidden by each deleted CID
-          const hiddenCount = data.length - filtered.length;
-          console.log("✅ Visible documents:", filtered.length);
-          console.log("🙈 Hidden blockchain entries:", hiddenCount);
+          
+          console.log("🔍 Before filtering - Total documents:", sortedData.length);
+          console.log("🔍 Deleted docs CIDs to filter out:", deletedDocs);
+          console.log("🔍 After filtering - Visible documents:", filtered.length);
+          
+          setMsg(filtered);
           console.log(
-            "📊 Breakdown: " +
-              data.length +
-              " total - " +
-              hiddenCount +
-              " hidden = " +
-              filtered.length +
-              " visible"
+            "✅ Documents to display:",
+            filtered.length,
+            "(hidden:",
+            deletedDocs.length,
+            ")"
           );
-
-          if (duplicates.length > 0) {
-            console.warn("⚠️ DUPLICATE CIDS DETECTED:");
-            duplicates.forEach(([cid, count]) => {
-              console.warn(
-                `  📎 CID ${cid.substring(0, 25)}... appears ${count} times`
-              );
-            });
-            console.warn(
-              `🔑 Total unique CIDs: ${Object.keys(cidCounts).length}`
-            );
-            console.warn(`📋 CIDs with duplicates: ${duplicates.length}`);
+          console.log("✅ Final document CIDs to display:", filtered.map(d => d.cid?.substring(0, 20) + '...'));
+          
+          // Debug: Show what's being hidden
+          if (deletedDocs.length > 0) {
+            console.log("🗑️ Hidden document CIDs:", deletedDocs);
+            const hiddenDocs = sortedData.filter(doc => deletedDocs.includes(doc.cid));
+            console.log("🗑️ Hidden documents details:", hiddenDocs.map(d => ({ cid: d.cid.substring(0, 20), isReceived: d.isReceived })));
           }
 
-          console.log("======================");
-
-          // Reload metadata
-          const metadata = localStorage.getItem(`docMetadata_${address}`);
-          if (metadata) {
-            const parsed = JSON.parse(metadata);
-            console.log(
-              "📋 Loaded metadata for",
-              Object.keys(parsed).length,
-              "documents"
-            );
-            setDocMetadata(parsed);
+          // FIXED: Only use localStorage metadata, NEVER try IPFS (it's always failing)
+          setLoadingMessage("📋 Loading patient information...");
+          
+          const currentMetadata = JSON.parse(
+            localStorage.getItem(`docMetadata_${address}`) || "{}"
+          );
+          
+          console.log(`📦 Metadata in localStorage: ${Object.keys(currentMetadata).length} entries`);
+          
+          if (Object.keys(currentMetadata).length === 0 && filtered.length > 0) {
+            // No metadata in localStorage - SKIP IPFS (it's always failing)
+            console.warn("⚠️ No metadata found in localStorage. Patient info will not be displayed.");
+            console.warn("💡 To add metadata: Upload documents with patient info filled in the 'Document Transfer' page");
+            setDocMetadata({});
+          } else {
+            // Use localStorage metadata
+            console.log(`✅ Using ${Object.keys(currentMetadata).length} metadata entries from localStorage`);
+            setDocMetadata(currentMetadata);
           }
 
           setIsLoadingDocs(false);
           setLoadingMessage("");
         } catch (error) {
-          console.error("❌ Error loading documents:", error);
-          console.error("Error details:", error.message);
+          console.error("Error loading documents:", error);
           setIsLoadingDocs(false);
           setLoadingMessage("");
         }
@@ -173,40 +212,6 @@ const Dashboard = () => {
     };
     fetchData();
   }, [address, contract, isLoading, deletedDocs]);
-
-  // Function to get unique documents (removes duplicates by CID)
-  const getDisplayDocuments = () => {
-    // First, sort ALL documents by timestamp (newest first)
-    const sortedDocs = [...msg].sort((a, b) => {
-      // Convert BigNumber timestamps to numbers for comparison
-      const timeA =
-        typeof a.timestamp === "object" ? Number(a.timestamp) : a.timestamp;
-      const timeB =
-        typeof b.timestamp === "object" ? Number(b.timestamp) : b.timestamp;
-      return timeB - timeA; // Descending order (newest first)
-    });
-
-    if (showDuplicates) {
-      return sortedDocs; // Show all, sorted by newest first
-    }
-
-    // Group by CID and keep only the most recent one (first occurrence in sorted array)
-    const uniqueDocs = {};
-    const seenCIDs = new Set();
-    const result = [];
-
-    sortedDocs.forEach((doc) => {
-      if (!seenCIDs.has(doc.cid)) {
-        seenCIDs.add(doc.cid);
-        result.push(doc);
-      }
-    });
-
-    console.log(
-      `📊 Display: ${result.length} unique from ${msg.length} total (sorted newest first)`
-    );
-    return result;
-  };
 
   const handleBoxClick = async (item) => {
     try {
@@ -263,10 +268,9 @@ const Dashboard = () => {
 
         // List of models to try (in order of preference)
         const modelsToTry = [
-          // "gemini-1.5-flash-latest",
-          // "gemini-1.5-pro-latest",
-          // "gemini-pro-vision",
-          "gemini-2.0-flash-exp",
+          "gemini-1.5-flash-latest",
+          "gemini-1.5-pro-latest",
+          "gemini-pro-vision",
         ];
 
         let lastError = null;
@@ -549,6 +553,7 @@ This AI-generated analysis is provided for educational and informational purpose
 
     if (confirmRestore) {
       // Clear deleted list
+      console.log('🔄 Restoring all deleted documents...');
       setDeletedDocs([]);
       localStorage.removeItem(`deletedDocs_${address}`);
 
@@ -557,6 +562,54 @@ This AI-generated analysis is provided for educational and informational purpose
 
       alert("✅ All deleted documents have been restored!");
     }
+  };
+
+  const handleClearAllCache = () => {
+    const confirmClear = window.confirm(
+      `⚠️ WARNING: This will clear ALL document caches including:\n\n` +
+      `• Hidden documents list (${deletedDocs.length} items)\n` +
+      `• Document metadata\n` +
+      `• Received files cache\n\n` +
+      `Documents on blockchain will NOT be deleted.\n\n` +
+      `Continue?`
+    );
+
+    if (confirmClear) {
+      console.log('🧹 Clearing all localStorage caches for address:', address);
+      localStorage.removeItem(`deletedDocs_${address}`);
+      localStorage.removeItem(`docMetadata_${address}`);
+      localStorage.removeItem(`receivedFiles_${address}`);
+      setDeletedDocs([]);
+      setDocMetadata({});
+      alert("✅ All caches cleared! Page will reload.");
+      window.location.reload();
+    }
+  };
+
+  const handleShowCacheInfo = () => {
+    // Debug function to show what's in localStorage
+    const deletedDocsCache = JSON.parse(localStorage.getItem(`deletedDocs_${address}`) || "[]");
+    const metadataCache = JSON.parse(localStorage.getItem(`docMetadata_${address}`) || "{}");
+    const receivedFilesCache = JSON.parse(localStorage.getItem(`receivedFiles_${address}`) || "[]");
+    
+    const metadataCIDs = Object.keys(metadataCache);
+    
+    console.log("📊 === CACHE DEBUG INFO ===");
+    console.log("Address:", address);
+    console.log("Deleted docs:", deletedDocsCache.length, deletedDocsCache);
+    console.log("Metadata entries:", metadataCIDs.length, metadataCIDs.map(cid => cid.substring(0, 20) + "..."));
+    console.log("Received files:", receivedFilesCache.length, receivedFilesCache.map(f => ({ cid: f.cid?.substring(0, 20) + "...", sender: f.sender?.substring(0, 10) + "..." })));
+    console.log("Full metadata:", metadataCache);
+    console.log("========================");
+    
+    alert(
+      `📊 Cache Information:\n\n` +
+      `🗑️ Hidden documents: ${deletedDocsCache.length}\n` +
+      `📋 Metadata entries: ${metadataCIDs.length}\n` +
+      `📥 Received files: ${receivedFilesCache.length}\n` +
+      `📄 Visible documents: ${msg.length}\n\n` +
+      `Check console for detailed info`
+    );
   };
 
   const bytes32ToDecimal = (bytes32Hex) => {
@@ -609,124 +662,124 @@ This AI-generated analysis is provided for educational and informational purpose
     try {
       if (!isLoading && contract && address) {
         setIsLoadingDocs(true);
-        setLoadingMessage("🔄 Refreshing documents from blockchain...");
+        setLoadingMessage("🔄 Refreshing documents...");
 
         console.log("🔄 Refreshing documents for address:", address);
-        console.log("📍 Contract address:", CONTRACT_ADDRESS);
+        setLoadingMessage("📡 Connecting to blockchain...");
 
-        // Reload metadata
-        const metadata = localStorage.getItem(`docMetadata_${address}`);
-        if (metadata) {
-          const parsed = JSON.parse(metadata);
-          setDocMetadata(parsed);
-          console.log(
-            "📋 Loaded metadata for",
-            Object.keys(parsed).length,
-            "documents"
-          );
-        }
+        // SIMPLIFIED: Only get files uploaded directly from Document Sentinel
+        const uploadedData = await contract.call("getFiles", [address]);
+        console.log("📤 Documents uploaded from Document Sentinel:", uploadedData.length);
 
-        // Fetch directly from blockchain (skip backend)
-        setLoadingMessage("⛓️ Reading from blockchain...");
+        setLoadingMessage("🔍 Filtering and sorting documents...");
 
-        const data = await contract.call("getFiles", [address]);
-        console.log("⛓️ Raw contract data:", data);
-        console.log("📊 Total documents found:", data.length);
-
-        // Count unique CIDs
-        const uniqueCIDs = [...new Set(data.map((doc) => doc.cid))];
-        console.log("🔑 Unique CIDs on blockchain:", uniqueCIDs.length);
-        console.log("🚫 Deleted CIDs:", deletedDocs);
-
-        // Filter out deleted documents
-        const filtered = data.filter((doc) => !deletedDocs.includes(doc.cid));
-
-        // Sort by timestamp (newest first)
-        const sorted = [...filtered].sort((a, b) => {
-          const timeA =
-            typeof a.timestamp === "object" ? Number(a.timestamp) : a.timestamp;
-          const timeB =
-            typeof b.timestamp === "object" ? Number(b.timestamp) : b.timestamp;
-          return timeB - timeA;
+        // Sort by timestamp - newest first
+        const sortedData = [...uploadedData].sort((a, b) => {
+          const timestampA = bytes32ToDecimal(a.timestamp);
+          const timestampB = bytes32ToDecimal(b.timestamp);
+          return Number(timestampB) - Number(timestampA);
         });
 
-        setMsg(sorted);
+        // Filter out deleted documents
+        const filtered = sortedData.filter((doc) => !deletedDocs.includes(doc.cid));
+        setMsg(filtered);
 
-        // Log the 3 most recent documents
-        if (sorted.length > 0) {
-          console.log("📅 Most recent 3 documents after refresh:");
-          sorted.slice(0, 3).forEach((doc, i) => {
-            const time =
-              typeof doc.timestamp === "object"
-                ? Number(doc.timestamp)
-                : doc.timestamp;
-            const date = new Date(time * 1000).toLocaleString();
-            console.log(
-              `  ${i + 1}. CID: ${doc.cid.substring(0, 20)}... at ${date}`
-            );
-          });
-        }
-
-        const hiddenCount = data.length - filtered.length;
-        console.log("✅ Visible blockchain entries:", sorted.length);
-        console.log("🙈 Hidden blockchain entries:", hiddenCount);
-        console.log(
-          "📊 Math: " +
-            data.length +
-            " total - " +
-            hiddenCount +
-            " hidden = " +
-            sorted.length +
-            " visible"
-        );
+        // Reload metadata from localStorage
+        setLoadingMessage("📋 Loading patient information from cache...");
+        const cachedMetadata = JSON.parse(localStorage.getItem(`docMetadata_${address}`) || "{}");
+        setDocMetadata(cachedMetadata);
 
         setIsLoadingDocs(false);
         setLoadingMessage("");
 
         alert(
-          `📊 Blockchain Status:\n\n` +
-            `Total entries: ${data.length}\n` +
-            `Unique CIDs: ${uniqueCIDs.length}\n` +
-            `Deleted CIDs: ${deletedDocs.length}\n` +
-            `Hidden entries: ${hiddenCount}\n` +
-            `Visible: ${filtered.length}`
+          `✅ Refreshed! Found ${filtered.length} documents\n\n📤 Uploaded: ${uploadedData.length}\n🗑️ Hidden: ${deletedDocs.length}\n📋 Metadata: ${Object.keys(cachedMetadata).length} cached`
         );
       }
     } catch (error) {
-      console.error("❌ Error refreshing documents:", error);
+      console.error("Error refreshing documents:", error);
       setIsLoadingDocs(false);
       setLoadingMessage("");
-      alert("Failed to refresh documents. Check console for details.");
+      alert("Failed to refresh documents: " + error.message);
     }
   };
+        setLoadingMessage("� Checking for received documents...");
 
-  const handleShowAllDocuments = async () => {
-    try {
-      if (!isLoading && contract && address) {
-        const confirm = window.confirm(
-          "Show ALL documents including hidden ones?\n\nThis will display all documents on the blockchain without any filters."
+        // Use localStorage to track received files (populated when someone transfers to you)
+        const receivedFilesCache = JSON.parse(
+          localStorage.getItem(`receivedFiles_${address}`) || "[]"
+        );
+        console.log("� Received files from cache:", receivedFilesCache.length);
+
+        // Convert cached received files to proper format
+        const receivedFiles = receivedFilesCache.map((item) => ({
+          cid: item.cid,
+          receiver: item.receiver || address,
+          timestamp: item.timestamp || "0x0",
+          isReceived: true,
+        }));
+
+        // Combine uploaded and received files
+        const allFiles = [...uploadedData, ...receivedFiles];
+
+        // Deduplicate by CID (in case same file appears multiple times)
+        const uniqueFiles = Array.from(
+          new Map(allFiles.map((item) => [item.cid, item])).values()
         );
 
-        if (!confirm) return;
+        console.log(
+          "📋 Total unique documents:",
+          uniqueFiles.length,
+          "(Uploaded:",
+          uploadedData.length,
+          "+ Received:",
+          receivedFiles.length,
+          ")"
+        );
 
-        setIsLoadingDocs(true);
-        setLoadingMessage("🔄 Loading ALL documents...");
+        setLoadingMessage("🔍 Filtering and sorting documents...");
 
-        const data = await contract.call("getFiles", [address]);
-        console.log("📊 ALL documents (no filter):", data);
+        // Sort by timestamp - newest first (descending order)
+        const sortedData = [...uniqueFiles].sort((a, b) => {
+          const timestampA = bytes32ToDecimal(a.timestamp);
+          const timestampB = bytes32ToDecimal(b.timestamp);
+          return Number(timestampB) - Number(timestampA); // Newest first
+        });
 
-        // Show ALL documents without filtering
-        setMsg(data);
+        // Filter out deleted documents
+        const filtered = sortedData.filter(
+          (doc) => !deletedDocs.includes(doc.cid)
+        );
+        setMsg(filtered);
+        console.log(
+          "✅ Documents to display:",
+          filtered.length,
+          "(hidden:",
+          deletedDocs.length,
+          ")"
+        );
+
+        // FIXED: Only reload metadata from localStorage on Refresh, don't try IPFS
+        // This prevents IPFS timeout errors and is much faster
+        setLoadingMessage("📋 Loading patient information from cache...");
+        const cachedMetadata = JSON.parse(
+          localStorage.getItem(`docMetadata_${address}`) || "{}"
+        );
+        console.log(`📦 Loaded ${Object.keys(cachedMetadata).length} metadata entries from localStorage`);
+        setDocMetadata(cachedMetadata);
 
         setIsLoadingDocs(false);
         setLoadingMessage("");
-        alert(`✅ Showing ALL ${data.length} documents (no filters applied)`);
+
+        alert(
+          `✅ Refreshed! Found ${filtered.length} documents\n\n📤 Uploaded: ${uploadedData.length}\n️ Hidden: ${deletedDocs.length}\n📋 Metadata: ${Object.keys(cachedMetadata).length} cached`
+        );
       }
     } catch (error) {
-      console.error("❌ Error loading all documents:", error);
+      console.error("Error refreshing documents:", error);
       setIsLoadingDocs(false);
       setLoadingMessage("");
-      alert("Failed to load documents. Check console for details.");
+      alert("Failed to refresh documents: " + error.message);
     }
   };
 
@@ -740,41 +793,34 @@ This AI-generated analysis is provided for educational and informational purpose
             title="Your secured documents"
           />
           <div className="flex gap-3">
-            <button
-              onClick={() => setShowDuplicates(!showDuplicates)}
-              className={`px-6 py-3 font-bold rounded-lg transition-all ${
-                showDuplicates
-                  ? "bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800"
-                  : "bg-gradient-to-r from-cyan-500 to-cyan-700 hover:from-cyan-600 hover:to-cyan-800"
-              } text-white`}
-              title={
-                showDuplicates
-                  ? "Hide duplicate CIDs"
-                  : "Show all blockchain entries including duplicates"
-              }
-            >
-              {showDuplicates ? "📑 Show Unique Only" : "📋 Show All Entries"}
-            </button>
             {deletedDocs.length > 0 && (
               <button
                 onClick={handleRestoreDeleted}
-                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-700 text-white font-bold rounded-lg hover:from-green-600 hover:to-green-800 transition-all"
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-700 text-white font-bold rounded-lg hover:from-green-600 hover:to-green-800 transition-all shadow-lg animate-pulse"
+                title="Click to show hidden documents"
               >
-                Restore {deletedDocs.length} Hidden
+                🔄 Restore {deletedDocs.length} Hidden
               </button>
             )}
             <button
-              onClick={handleShowAllDocuments}
-              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold rounded-lg hover:from-purple-600 hover:to-purple-800 transition-all"
-              title="Show ALL documents including hidden ones"
+              onClick={handleShowCacheInfo}
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-700 text-white font-bold rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all"
+              title="Show localStorage cache information (debugging)"
             >
-              🔍 Show All
+              📊 Cache Info
+            </button>
+            <button
+              onClick={handleClearAllCache}
+              className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-700 text-white font-bold rounded-lg hover:from-red-600 hover:to-red-800 transition-all"
+              title="Clear all local caches (debugging)"
+            >
+              🧹 Clear Cache
             </button>
             <button
               onClick={handleRefresh}
               className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-700 text-white font-bold rounded-lg hover:from-orange-600 hover:to-orange-800 transition-all"
             >
-              🔄 Refresh
+              Refresh Documents
             </button>
           </div>
         </div>
@@ -831,140 +877,175 @@ This AI-generated analysis is provided for educational and informational purpose
                 </p>
               </div>
             </div>
+
+            {/* Received Documents Help Text */}
+            <div className="mt-6 max-w-md mx-auto bg-green-900/20 border border-green-500/40 rounded-lg p-6">
+              <p className="text-green-300 font-semibold mb-2">
+                📥 Expecting a transferred document?
+              </p>
+              <p className="text-sm text-green-200 mb-3">
+                Documents transferred to you will appear here automatically.
+              </p>
+              <div className="space-y-2 text-left text-sm text-gray-300">
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Make sure you're using the same wallet & browser</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Check "Data Received" tab for transfer history</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>
+                    Ask sender to confirm the correct receiver address
+                  </span>
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Documents Grid */}
         {!isLoadingDocs && msg.length > 0 && (
-          <div>
-            {/* Duplicate Warning */}
-            {!showDuplicates && getDisplayDocuments().length !== msg.length && (
-              <div className="mb-6 p-4 bg-blue-900/30 border border-blue-500 rounded-lg">
-                <h4 className="text-blue-400 font-bold mb-2">
-                  ℹ️ Showing Unique Documents Only
-                </h4>
-                <p className="text-sm text-gray-300">
-                  Displaying {getDisplayDocuments().length} unique documents
-                  (hiding {msg.length - getDisplayDocuments().length} duplicate
-                  blockchain entries). Click "Show All Entries" to see
-                  duplicates.
-                </p>
+          <>
+            {/* Warning banner when no metadata exists */}
+            {Object.keys(docMetadata).length === 0 && (
+              <div className="mb-6 bg-yellow-900/30 border border-yellow-500/50 rounded-lg p-6">
+                <div className="flex items-start gap-4">
+                  <div className="text-4xl">⚠️</div>
+                  <div className="flex-1">
+                    <h3 className="text-yellow-300 font-bold text-lg mb-2">
+                      No Patient Information Available
+                    </h3>
+                    <p className="text-yellow-200 text-sm mb-3">
+                      Your documents are visible, but patient information (name, ID, document type) is not stored.
+                    </p>
+                    <div className="space-y-2 text-sm text-gray-300">
+                      <p className="flex items-start gap-2">
+                        <span className="text-yellow-400">•</span>
+                        <span>Upload new documents using the <strong className="text-white">"Document Transfer"</strong> page and fill in patient details</span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <span className="text-yellow-400">•</span>
+                        <span>Existing documents will show CID only</span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <span className="text-yellow-400">•</span>
+                        <span>Click <button onClick={handleShowCacheInfo} className="text-blue-400 underline hover:text-blue-300">📊 Cache Info</button> to check stored data</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
             <div className="flex flex-wrap gap-10 mb-10">
-              {getDisplayDocuments().map((item, index) => {
-                const metadata = docMetadata[item.cid] || {};
+            {msg.map((item, index) => {
+              const metadata = docMetadata[item.cid] || {};
+              return (
+                <div
+                  className="block relative p-0.5 bg-no-repeat bg-[length:100%_100%] md:max-w-[24rem]"
+                  key={index}
+                  onClick={() => handleBoxClick(item)}
+                >
+                  <div className="relative z-2 flex flex-col min-h-[12rem] p-[2.4rem] cursor-pointer">
+                    {/* Received/Uploaded Badge */}
+                    {item.isReceived && (
+                      <div className="absolute top-3 right-3 px-2 py-1 bg-green-900/40 border border-green-500/60 rounded-full text-xs text-green-300 font-semibold">
+                        📥 Received
+                      </div>
+                    )}
 
-                // Count how many times this CID appears
-                const duplicateCount = msg.filter(
-                  (doc) => doc.cid === item.cid
-                ).length;
-
-                return (
-                  <div
-                    className="block relative p-0.5 bg-no-repeat bg-[length:100%_100%] md:max-w-[24rem]"
-                    key={index}
-                    onClick={() => handleBoxClick(item)}
-                  >
-                    <div className="relative z-2 flex flex-col min-h-[12rem] p-[2.4rem] cursor-pointer">
-                      {/* Duplicate Badge */}
-                      {duplicateCount > 1 && (
-                        <div className="absolute top-2 right-2 px-2 py-1 bg-yellow-500 text-black text-xs font-bold rounded">
-                          {duplicateCount}x
-                        </div>
-                      )}
-
-                      {/* Patient Info Header */}
-                      {metadata.patientName && (
-                        <div className="mb-3 pb-3 border-b border-zinc-700">
-                          <h4 className="text-lg font-bold text-purple-400 mb-1">
-                            👤 {metadata.patientName}
-                          </h4>
-                          {metadata.patientId &&
-                            metadata.patientId !== "N/A" && (
-                              <p className="text-xs text-gray-400">
-                                ID: {metadata.patientId}
-                              </p>
-                            )}
-                          {metadata.documentType && (
-                            <span className="inline-block mt-1 px-2 py-1 bg-orange-900/30 border border-orange-500/50 rounded text-xs text-orange-300">
-                              {metadata.documentType}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <h5 className="text-xs font-bold text-orange-500 mb-2">
-                        {metadata.patientName
-                          ? "Document Details"
-                          : `Document #${index + 1}`}
-                      </h5>
-                      <p className="text-sm mb-2 text-gray-400 break-all">
-                        <span className="font-semibold">CID:</span>{" "}
-                        {item.cid.substring(0, 20)}...
-                      </p>
-                      <p className="text-sm mb-2 text-gray-400">
-                        <span className="font-semibold">From:</span>{" "}
-                        {item.sender?.substring(0, 10)}...
-                      </p>
-                      <p className="text-sm mb-2 text-gray-400">
-                        <span className="font-semibold">To:</span>{" "}
-                        {item.receiver?.substring(0, 10)}...
-                      </p>
-                      <p className="body-2 mb-6 text-n-3">
-                        {convertUTC(item.timestamp)}
-                      </p>
-                      <div className="flex flex-col gap-2 mt-auto">
-                        <div className="flex items-center">
-                          <img
-                            src={benefitIcon3}
-                            width={48}
-                            height={48}
-                            alt="document"
-                          />
-                          <p className="ml-auto font-code text-xs hover:underline font-bold text-n-1 uppercase tracking-wider">
-                            Open document
+                    {/* Patient Info Header */}
+                    {metadata.patientName && (
+                      <div className="mb-3 pb-3 border-b border-zinc-700">
+                        <h4 className="text-lg font-bold text-purple-400 mb-1">
+                          👤 {metadata.patientName}
+                        </h4>
+                        {metadata.patientId && metadata.patientId !== "N/A" && (
+                          <p className="text-xs text-gray-400">
+                            ID: {metadata.patientId}
                           </p>
-                          <Arrow />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={(e) => handleAnalyzeWithAI(item, e)}
-                            className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all text-xs"
-                          >
-                            🤖 Analyze AI
-                          </button>
-                          <button
-                            onClick={(e) => handleDeleteDocument(item, e)}
-                            className="px-3 py-2 bg-gradient-to-r from-red-500 to-red-700 text-white font-bold rounded-lg hover:from-red-600 hover:to-red-800 transition-all text-xs"
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
+                        )}
+                        {metadata.documentType && (
+                          <span className="inline-block mt-1 px-2 py-1 bg-orange-900/30 border border-orange-500/50 rounded text-xs text-orange-300">
+                            {metadata.documentType}
+                          </span>
+                        )}
                       </div>
-                    </div>
+                    )}
 
-                    <GradientLight />
-
-                    <div
-                      className="absolute inset-0.5 bg-zinc-800"
-                      style={{ clipPath: "url(#benefits)" }}
-                    >
-                      <div className="absolute inset-0 opacity-0 transition-opacity hover:opacity-90">
+                    <h5 className="text-xs font-bold text-orange-500 mb-2">
+                      {metadata.patientName
+                        ? "Document Details"
+                        : `Document #${index + 1}`}
+                    </h5>
+                    <p className="text-sm mb-2 text-gray-400 break-all">
+                      <span className="font-semibold">CID:</span>{" "}
+                      {item.cid.substring(0, 20)}...
+                    </p>
+                    <p className="text-sm mb-2 text-gray-400">
+                      <span className="font-semibold">From:</span>{" "}
+                      {item.sender?.substring(0, 10)}...
+                    </p>
+                    <p className="text-sm mb-2 text-gray-400">
+                      <span className="font-semibold">To:</span>{" "}
+                      {item.receiver?.substring(0, 10)}...
+                    </p>
+                    <p className="body-2 mb-6 text-n-3">
+                      {convertUTC(item.timestamp)}
+                    </p>
+                    <div className="flex flex-col gap-2 mt-auto">
+                      <div className="flex items-center">
                         <img
-                          src={benefitImage2}
-                          width={380}
-                          className="w-full h-full object-cover"
+                          src={benefitIcon3}
+                          width={48}
+                          height={48}
+                          alt="document"
                         />
+                        <p className="ml-auto font-code text-xs hover:underline font-bold text-n-1 uppercase tracking-wider">
+                          Open document
+                        </p>
+                        <Arrow />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={(e) => handleAnalyzeWithAI(item, e)}
+                          className="px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all text-xs"
+                        >
+                          🤖 Analyze AI
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteDocument(item, e)}
+                          className="px-3 py-2 bg-gradient-to-r from-red-500 to-red-700 text-white font-bold rounded-lg hover:from-red-600 hover:to-red-800 transition-all text-xs"
+                        >
+                          🗑️ Delete
+                        </button>
                       </div>
                     </div>
-                    <ClipPath />
                   </div>
-                );
-              })}
-            </div>
+
+                  <GradientLight />
+
+                  <div
+                    className="absolute inset-0.5 bg-zinc-800"
+                    style={{ clipPath: "url(#benefits)" }}
+                  >
+                    <div className="absolute inset-0 opacity-0 transition-opacity hover:opacity-90">
+                      <img
+                        src={benefitImage2}
+                        width={380}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                  <ClipPath />
+                </div>
+              );
+            })}
           </div>
+          </>
         )}
       </div>
 

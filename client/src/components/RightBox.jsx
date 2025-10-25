@@ -33,9 +33,6 @@ export const RightBox = () => {
   const [recieverAddress, setReceiverAddress] = React.useState("");
   const [uploadProgress, setUploadProgress] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [patientName, setPatientName] = useState("");
-  const [patientId, setPatientId] = useState("");
-  const [documentType, setDocumentType] = useState("");
 
   const sender = useAddress();
 
@@ -84,11 +81,6 @@ export const RightBox = () => {
       return alert("❌ Please enter a receiver wallet address!");
     }
 
-    // Check if patient name is provided
-    if (!patientName || patientName.trim().length === 0) {
-      return alert("❌ Please enter the patient name!");
-    }
-
     if (fileData.length > 0) {
       setIsUploading(true);
       setUploadProgress("📤 Step 1/3: Reading file...");
@@ -131,148 +123,6 @@ export const RightBox = () => {
             });
             console.log("Blockchain transaction:", data);
 
-            // Upload metadata to IPFS as well
-            const metadata = {
-              cid: cid,
-              patientName: patientName,
-              patientId: patientId || "N/A",
-              documentType: documentType || "Medical Document",
-              uploadDate: new Date().toISOString(),
-              uploader: sender,
-              receiver: recieverAddress,
-            };
-
-            console.log("Uploading metadata to IPFS for CID:", cid, metadata);
-
-            try {
-              // Convert metadata to base64 for upload
-              const metadataJson = JSON.stringify(metadata, null, 2);
-              const metadataBase64 =
-                "data:application/json;base64," + btoa(metadataJson);
-
-              const metadataResponse = await axios.post(
-                "http://localhost:5001/share",
-                {
-                  fileData: metadataBase64,
-                }
-              );
-
-              const metadataCid = metadataResponse.data.IpfsHash;
-              console.log("Metadata uploaded to IPFS, CID:", metadataCid);
-
-              // Store in localStorage for sender
-              const existingMetadataSender = JSON.parse(
-                localStorage.getItem(`docMetadata_${sender}`) || "{}"
-              );
-              existingMetadataSender[cid] = {
-                ...metadata,
-                metadataCid: metadataCid,
-              };
-              localStorage.setItem(
-                `docMetadata_${sender}`,
-                JSON.stringify(existingMetadataSender)
-              );
-
-              // IMPORTANT: Also store for receiver so they can see metadata in their Document Sentinel
-              const existingMetadataReceiver = JSON.parse(
-                localStorage.getItem(`docMetadata_${recieverAddress}`) || "{}"
-              );
-              existingMetadataReceiver[cid] = {
-                ...metadata,
-                metadataCid: metadataCid,
-              };
-              localStorage.setItem(
-                `docMetadata_${recieverAddress}`,
-                JSON.stringify(existingMetadataReceiver)
-              );
-
-              // CRITICAL: Add to receiver's receivedFiles cache so it appears in their Document Sentinel
-              const receivedFilesCache = JSON.parse(
-                localStorage.getItem(`receivedFiles_${recieverAddress}`) || "[]"
-              );
-              
-              const newReceivedFile = {
-                cid: cid,
-                receiver: recieverAddress,
-                timestamp:
-                  "0x" +
-                  Math.floor(Date.now() / 1000)
-                    .toString(16)
-                    .padStart(64, "0"),
-                sender: sender,
-              };
-              
-              receivedFilesCache.push(newReceivedFile);
-              
-              const receivedFilesKey = `receivedFiles_${recieverAddress}`;
-              localStorage.setItem(
-                receivedFilesKey,
-                JSON.stringify(receivedFilesCache)
-              );
-
-              console.log("✅ Metadata saved for both sender and receiver:");
-              console.log("   - Sender docs:", Object.keys(existingMetadataSender).length);
-              console.log("   - Receiver docs:", Object.keys(existingMetadataReceiver).length);
-              console.log("   - Receiver cache items:", receivedFilesCache.length);
-              console.log("   - Receiver cache key:", receivedFilesKey);
-              console.log("   - New received file:", newReceivedFile);
-              console.log("   - Full receiver cache:", receivedFilesCache);
-            } catch (metadataError) {
-              console.error(
-                "Failed to upload metadata to IPFS:",
-                metadataError
-              );
-              // Fallback: store only in localStorage for both sender and receiver
-              const existingMetadataSender = JSON.parse(
-                localStorage.getItem(`docMetadata_${sender}`) || "{}"
-              );
-              existingMetadataSender[cid] = metadata;
-              localStorage.setItem(
-                `docMetadata_${sender}`,
-                JSON.stringify(existingMetadataSender)
-              );
-
-              const existingMetadataReceiver = JSON.parse(
-                localStorage.getItem(`docMetadata_${recieverAddress}`) || "{}"
-              );
-              existingMetadataReceiver[cid] = metadata;
-              localStorage.setItem(
-                `docMetadata_${recieverAddress}`,
-                JSON.stringify(existingMetadataReceiver)
-              );
-
-              // CRITICAL: Add to receiver's receivedFiles cache so it appears in their Document Sentinel
-              const receivedFilesCache = JSON.parse(
-                localStorage.getItem(`receivedFiles_${recieverAddress}`) || "[]"
-              );
-              
-              const newReceivedFile = {
-                cid: cid,
-                receiver: recieverAddress,
-                timestamp:
-                  "0x" +
-                  Math.floor(Date.now() / 1000)
-                    .toString(16)
-                    .padStart(64, "0"),
-                sender: sender,
-              };
-              
-              receivedFilesCache.push(newReceivedFile);
-              
-              const receivedFilesKey = `receivedFiles_${recieverAddress}`;
-              localStorage.setItem(
-                receivedFilesKey,
-                JSON.stringify(receivedFilesCache)
-              );
-
-              console.log(
-                "⚠️ Metadata saved to localStorage only (IPFS failed) for both sender and receiver:"
-              );
-              console.log("   - Receiver cache key:", receivedFilesKey);
-              console.log("   - Receiver cache items:", receivedFilesCache.length);
-              console.log("   - New received file:", newReceivedFile);
-            }
-
             setUploadProgress("✅ Success! Document shared on blockchain!");
 
             // Wait to show success message
@@ -281,21 +131,12 @@ export const RightBox = () => {
             localStorage.removeItem("status");
             setFileData(null);
             setReceiverAddress("");
-            setPatientName("");
-            setPatientId("");
-            setDocumentType("");
             setDip(false);
             setIsUploading(false);
             setUploadProgress("");
 
             alert(
-              `✅ Document successfully shared!\n\n👤 Patient: ${patientName}\n📄 IPFS CID: ${cid.substring(
-                0,
-                20
-              )}...\n📧 Receiver: ${recieverAddress.substring(
-                0,
-                10
-              )}...\n\nGo to "Sent" tab and click Refresh to see it!`
+              `✅ Document successfully shared!\n\nIPFS CID: ${cid}\nReceiver: ${recieverAddress}\n\nGo to "Sent" tab and click Refresh to see it!`
             );
           })
           .catch((err) => {
@@ -342,7 +183,7 @@ export const RightBox = () => {
   };
 
   return (
-    <div className="w-1/2 h-full max-h-[800px] min-h-[500px] mb-5 bg-stone-900 p-4 rounded-md relative flex flex-col z-10">
+    <div className="w-1/2 h-auto mb-5 bg-stone-900 p-4 rounded-md relative">
       <div className="flex gap-2 mb-4">
         <input
           type="text"
@@ -354,62 +195,6 @@ export const RightBox = () => {
           placeholder="Enter Receiver Wallet Address (0x...)"
         />
         <Button onClick={checkValidAddress}>Verify</Button>
-      </div>
-
-      {/* Patient Information Section */}
-      <div className="mb-4 p-4 bg-zinc-800 border border-purple-500/30 rounded-lg">
-        <h3 className="text-purple-400 font-bold text-lg mb-3">
-          📋 Patient Information
-        </h3>
-        <div className="space-y-3">
-          <div>
-            <label className="text-white text-sm font-semibold block mb-1">
-              Patient Name *
-            </label>
-            <input
-              type="text"
-              value={patientName}
-              onChange={(e) => setPatientName(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              placeholder="Enter patient name"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-white text-sm font-semibold block mb-1">
-                Patient ID (optional)
-              </label>
-              <input
-                type="text"
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="e.g., P-12345"
-              />
-            </div>
-            <div>
-              <label className="text-white text-sm font-semibold block mb-1">
-                Document Type
-              </label>
-              <select
-                value={documentType}
-                onChange={(e) => setDocumentType(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Select type</option>
-                <option value="X-Ray">X-Ray</option>
-                <option value="CT Scan">CT Scan</option>
-                <option value="MRI">MRI</option>
-                <option value="Blood Test">Blood Test</option>
-                <option value="Prescription">Prescription</option>
-                <option value="Lab Report">Lab Report</option>
-                <option value="Discharge Summary">Discharge Summary</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="w-full mb-4">
@@ -456,10 +241,10 @@ export const RightBox = () => {
         </div>
       )}
 
-      <div className="w-full flex flex-col gap-3 relative z-10">
+      <div className="w-full flex flex-col gap-3">
         <Button
           onClick={upload}
-          className="w-full relative z-10 !bg-gradient-to-r !from-purple-600 !to-purple-700 hover:!from-purple-700 hover:!to-purple-800"
+          className="w-full"
           disabled={isLoading || isUploading}
         >
           {isUploading

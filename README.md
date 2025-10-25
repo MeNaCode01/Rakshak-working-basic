@@ -1,4 +1,4 @@
-# Rakshak 2.0 - Healthcare Management System
+# Rakshak 3.0 - Healthcare Management System
 
 A comprehensive full-stack healthcare platform with blockchain integration and AI-powered disease prediction.
 

@@ -32,7 +32,7 @@ const Hero = () => {
           <h1 className="h1 mb-6">
           Web 3.0 Security, Advance SOS ML Workspace with {` `}
             <span className="inline-block relative">
-            Rakshak 2.0{" "}
+            Rakshak 3.0{" "}
               <img
                 src={curve}
                 className="absolute top-full left-0 w-full xl:-mt-2"

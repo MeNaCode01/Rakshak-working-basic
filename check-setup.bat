@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo  Rakshak 2.0 - Quick Start Checker
+echo  Rakshak 3.0 - Quick Start Checker
 echo ========================================
 echo.
 

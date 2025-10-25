@@ -2,7 +2,7 @@
 
 ## Overview
 
-Your Rakshak 2.0 application uses blockchain to securely store and share medical documents via IPFS. The smart contract is deployed on Sepolia testnet and integrated with your frontend.
+Your Rakshak 3.0 application uses blockchain to securely store and share medical documents via IPFS. The smart contract is deployed on Sepolia testnet and integrated with your frontend.
 
 ## Architecture
 

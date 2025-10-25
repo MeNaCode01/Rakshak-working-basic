@@ -39,17 +39,21 @@ const ipfsClient = create({
 });
 
 const addFileToIPFS = async (file) => {
-  fs.writeFileSync("./fetched_image.jpg", file);
-  console.log("Image file fetched from IPFS and saved as fetched_image.jpg");
+  const timestamp = Date.now();
+  const tempFileName = `./fetched_image_${timestamp}.jpg`;
+  
+  fs.writeFileSync(tempFileName, file);
+  console.log(`💾 Temp file saved: ${tempFileName}`);
+  
+  const fileSizeKB = (file.length / 1024).toFixed(2);
+  console.log(`📊 Uploading file size: ${fileSizeKB} KB`);
 
   const formData = new FormData();
-  const src = "./fetched_image.jpg";
-
-  const f = fs.createReadStream(src);
+  const f = fs.createReadStream(tempFileName);
   formData.append("file", f);
 
   const pinataMetadata = JSON.stringify({
-    name: "File name",
+    name: `Medical_Document_${timestamp}`,
   });
   formData.append("pinataMetadata", pinataMetadata);
 
@@ -59,6 +63,7 @@ const addFileToIPFS = async (file) => {
   formData.append("pinataOptions", pinataOptions);
 
   try {
+    console.log("📤 Sending to Pinata...");
     const res = await axios.post(
       "https://api.pinata.cloud/pinning/pinFileToIPFS",
       formData,
@@ -70,9 +75,21 @@ const addFileToIPFS = async (file) => {
         },
       }
     );
+    
+    console.log(`✅ Pinata response - CID: ${res.data.IpfsHash}`);
+    
+    // Clean up temp file
+    fs.unlinkSync(tempFileName);
+    console.log(`🗑️ Cleaned up temp file: ${tempFileName}`);
+    
     return res.data;
   } catch (error) {
-    console.log(error);
+    console.error("❌ Pinata upload error:", error);
+    // Clean up temp file even on error
+    if (fs.existsSync(tempFileName)) {
+      fs.unlinkSync(tempFileName);
+    }
+    throw error;
   }
 };
 
@@ -130,7 +147,7 @@ app.get("/img/:cid", async (req, res) => {
 
 app.post("/share", async (req, res) => {
   try {
-    console.log("/share endpoint called");
+    console.log("\n=== /share endpoint called ===");
 
     if (!req.body.fileData) {
       return res.status(400).json({ error: "No file data provided" });
@@ -143,13 +160,22 @@ app.post("/share", async (req, res) => {
     }
     const [, mimeType, base64EncodedData] = matches;
     const fileExtension = mimeType.split("/")[1];
-    const fileName = `output.${fileExtension}`;
+    
+    // Use timestamp to create unique filename
+    const timestamp = Date.now();
+    const fileName = `output_${timestamp}.${fileExtension}`;
+    console.log(`📁 Saving as: ${fileName}`);
 
     const imageData = Buffer.from(base64Data.split(",")[1], "base64");
+    const fileSizeKB = (imageData.length / 1024).toFixed(2);
+    console.log(`📊 File size: ${fileSizeKB} KB`);
+    console.log(`🔑 First 50 bytes (hex): ${imageData.toString('hex', 0, 50)}`);
+    
     fs.writeFileSync(fileName, imageData);
 
+    console.log("☁️ Uploading to IPFS via Pinata...");
     const result = await addFileToIPFS(imageData);
-    console.log("IPFS upload result:", result);
+    console.log("✅ IPFS upload result:", result);
 
     if (!result || !result.IpfsHash) {
       return res.status(500).json({ error: "Failed to upload to IPFS" });

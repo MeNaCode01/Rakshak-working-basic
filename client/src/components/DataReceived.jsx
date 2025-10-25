@@ -14,35 +14,51 @@ const DataReceived = () => {
   const address = useAddress();
   const { contract, isLoading } = useContract(CONTRACT_ADDRESS);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!isLoading && contract && address) {
-        try {
-          // Get all files from all senders and filter for current user as receiver
-          // Note: This is a simplified approach. In production, you'd want the contract
-          // to have a function to get files by receiver address
-          const data = await contract.call("getFiles", [address]);
+  const fetchData = async () => {
+    if (!isLoading && contract && address) {
+      try {
+        console.log("📡 Fetching received documents from blockchain...");
 
-          // Sort by timestamp - newest first (descending order)
-          const sortedData = [...data].sort((a, b) => {
-            const timestampA = bytes32ToDecimal(a.timestamp);
-            const timestampB = bytes32ToDecimal(b.timestamp);
-            return Number(timestampB) - Number(timestampA); // Newest first
-          });
+        // Get all files from the blockchain
+        const data = await contract.call("getFiles", [address]);
 
-          // For now, we'll show files where user is listed as receiver
-          // You might need to query multiple addresses or implement a new contract function
-          setMsg(sortedData);
+        // Filter for documents where current user is the receiver (not sender)
+        const receivedDocs = data.filter(
+          (doc) =>
+            doc.receiver.toLowerCase() !== doc.sender.toLowerCase() &&
+            doc.receiver.toLowerCase() === address.toLowerCase()
+        );
+
+        // Sort by timestamp (newest first)
+        const sortedDocs = [...receivedDocs].sort((a, b) => {
+          const timeA =
+            typeof a.timestamp === "object" ? Number(a.timestamp) : a.timestamp;
+          const timeB =
+            typeof b.timestamp === "object" ? Number(b.timestamp) : b.timestamp;
+          return timeB - timeA; // Descending order (newest first)
+        });
+
+        setMsg(sortedDocs);
+
+        console.log("✅ Received documents fetched:", sortedDocs.length);
+        console.log("📅 Sorted by timestamp (newest first)");
+        if (sortedDocs.length > 0) {
+          const latestTime =
+            typeof sortedDocs[0].timestamp === "object"
+              ? Number(sortedDocs[0].timestamp)
+              : sortedDocs[0].timestamp;
           console.log(
-            "Checking received documents (sorted by newest first):",
-            sortedData.length
+            "🆕 Latest received:",
+            new Date(latestTime * 1000).toLocaleString()
           );
-        } catch (error) {
-          console.error("Error fetching received documents:", error);
         }
+      } catch (error) {
+        console.error("❌ Error fetching received documents:", error);
       }
-    };
+    }
+  };
 
+  useEffect(() => {
     fetchData();
   }, [address, contract, isLoading]);
 
@@ -83,63 +99,107 @@ const DataReceived = () => {
   };
 
   return (
-    <div className="flex flex-col gap-2 p-4">
-      {msg.length !== 0 ? (
-        msg.map((item, index) => (
-          <div
-            key={index}
-            className="border-transparent rounded-lg bg-zinc-600 border-white p-3 hover:bg-zinc-700 transition-colors"
+    <div className="flex flex-col gap-2 p-4 h-full">
+      <div className="flex justify-between items-center mb-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-white font-semibold">Received Documents</h3>
+          <div className={`w-2 h-2 rounded-full ${isRefreshing ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></div>
+          <span className="text-xs text-gray-400">
+            {isRefreshing ? 'Syncing...' : 'Live'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">
+            Updated: {lastUpdated.toLocaleTimeString()}
+          </span>
+          <button
+            onClick={fetchData}
+            disabled={isLoading}
+            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors disabled:bg-gray-600"
           >
-            <div className="text-emerald-300 text-sm mb-1">
-              <span className="font-semibold">From:</span>
-              <span className="text-white ml-2">
-                {item.receiver
-                  ? `${item.receiver.slice(0, 6)}...${item.receiver.slice(-4)}`
-                  : "Unknown"}
-              </span>
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Documents Container */}
+      <div className="flex-1 overflow-y-auto max-h-[calc(100vh-200px)] pr-2 space-y-2 custom-scrollbar">
+        <style>{`
+          .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-track {
+            background: #27272a;
+            border-radius: 10px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #10b981;
+            border-radius: 10px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #34d399;
+          }
+        `}</style>
+
+        {msg.length !== 0 ? (
+          msg.map((item, index) => (
+            <div
+              key={index}
+              className="border-transparent rounded-lg bg-zinc-600 border-white p-3 hover:bg-zinc-700 transition-colors"
+            >
+              <div className="text-emerald-300 text-sm mb-1">
+                <span className="font-semibold">From:</span>
+                <span className="text-white ml-2">
+                  {item.receiver
+                    ? `${item.receiver.slice(0, 6)}...${item.receiver.slice(
+                        -4
+                      )}`
+                    : "Unknown"}
+                </span>
+              </div>
+              <div className="text-yellow-300 text-sm mb-1">
+                <span className="font-semibold">IPFS CID:</span>
+                <span className="text-white ml-2 break-all">
+                  {item.cid || item.content}
+                </span>
+              </div>
+              <div className="text-blue-300 text-sm mb-2">
+                <span className="font-semibold">Received:</span>
+                <span className="text-white ml-2">
+                  {item.timestamp ? convertUTC(item.timestamp) : "Unknown"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleViewDocument(item.cid || item.content)}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                >
+                  📄 View Document
+                </button>
+                <a
+                  href={`https://ipfs.io/ipfs/${item.cid || item.content}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
+                >
+                  ⬇️ Download
+                </a>
+              </div>
             </div>
-            <div className="text-yellow-300 text-sm mb-1">
-              <span className="font-semibold">IPFS CID:</span>
-              <span className="text-white ml-2 break-all">
-                {item.cid || item.content}
-              </span>
-            </div>
-            <div className="text-blue-300 text-sm mb-2">
-              <span className="font-semibold">Received:</span>
-              <span className="text-white ml-2">
-                {item.timestamp ? convertUTC(item.timestamp) : "Unknown"}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleViewDocument(item.cid || item.content)}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
-              >
-                📄 View Document
-              </button>
-              <a
-                href={`https://ipfs.io/ipfs/${item.cid || item.content}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
-              >
-                ⬇️ Download
-              </a>
-            </div>
-          </div>
-        ))
-      ) : isLoading ? (
-        <p className="text-gray-400 text-center p-4">Loading documents...</p>
-      ) : address ? (
-        <p className="text-gray-400 text-center p-4 bg-zinc-700 rounded-lg">
-          No documents received yet! When someone sends you a document, it will
-          appear here.
-        </p>
-      ) : (
-        <p className="text-yellow-400 text-center p-4 bg-zinc-700 rounded-lg">
-          Please connect your wallet to view received documents
-        </p>
-      )}
+          ))
+        ) : isLoading ? (
+          <p className="text-gray-400 text-center p-4">Loading documents...</p>
+        ) : address ? (
+          <p className="text-gray-400 text-center p-4 bg-zinc-700 rounded-lg">
+            No documents received yet! When someone sends you a document, it
+            will appear here.
+          </p>
+        ) : (
+          <p className="text-yellow-400 text-center p-4 bg-zinc-700 rounded-lg">
+            Please connect your wallet to view received documents
+          </p>
+        )}
+      </div>
 
       {/* Document Preview Modal */}
       {isPopupOpen && (

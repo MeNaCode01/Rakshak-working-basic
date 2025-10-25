@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo  Rakshak 2.0 - Starting All Services
+echo  Rakshak 3.0 - Starting All Services
 echo ========================================
 echo.
 

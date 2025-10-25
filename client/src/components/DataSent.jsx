@@ -185,23 +185,31 @@ const DataSent = () => {
 
         const data = await contract.call("getFiles", [address]);
 
-        // Sort by timestamp - newest first (descending order)
+        // Sort by timestamp (newest first)
         const sortedData = [...data].sort((a, b) => {
-          const timestampA = bytes32ToDecimal(a.timestamp);
-          const timestampB = bytes32ToDecimal(b.timestamp);
-          return Number(timestampB) - Number(timestampA); // Newest first
+          const timeA =
+            typeof a.timestamp === "object" ? Number(a.timestamp) : a.timestamp;
+          const timeB =
+            typeof b.timestamp === "object" ? Number(b.timestamp) : b.timestamp;
+          return timeB - timeA; // Descending order (newest first)
         });
 
         setMsg(sortedData);
 
-        console.log(
-          "✅ Documents fetched:",
-          sortedData.length,
-          "(sorted by newest first)"
-        );
-        console.log("Documents data:", sortedData);
+        console.log("✅ Documents fetched:", sortedData.length);
+        console.log("📅 Sorted by timestamp (newest first)");
+        if (sortedData.length > 0) {
+          const latestTime =
+            typeof sortedData[0].timestamp === "object"
+              ? Number(sortedData[0].timestamp)
+              : sortedData[0].timestamp;
+          console.log(
+            "🆕 Latest document:",
+            new Date(latestTime * 1000).toLocaleString()
+          );
+        }
 
-        if (sortedData.length === 0) {
+        if (data.length === 0) {
           console.log(
             "ℹ️ No documents found. Make sure your transaction was confirmed on the blockchain."
           );
@@ -257,7 +265,7 @@ const DataSent = () => {
   };
 
   return (
-    <div className="flex flex-col gap-2 p-4">
+    <div className="flex flex-col gap-2 p-4 h-full">
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-white font-semibold">Sent Documents</h3>
         <button
@@ -268,69 +276,92 @@ const DataSent = () => {
           🔄 Refresh
         </button>
       </div>
-      {!(msg.length === 0) ? (
-        msg.map((item, index) => (
-          <div
-            className="border-transparent rounded-lg bg-zinc-600 border-white p-3 hover:bg-zinc-700 transition-colors"
-            key={index}
-          >
-            <div className="text-emerald-300 text-sm mb-1">
-              <span className="font-semibold">Receiver:</span>
-              <span className="text-white ml-2">
-                {item.receiver.slice(0, 6)}...{item.receiver.slice(-4)}
-              </span>
+
+      {/* Scrollable Documents Container */}
+      <div className="flex-1 overflow-y-auto max-h-[calc(100vh-200px)] pr-2 space-y-2 custom-scrollbar">
+        <style>{`
+          .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-track {
+            background: #27272a;
+            border-radius: 10px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 10px;
+          }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #60a5fa;
+          }
+        `}</style>
+
+        {!(msg.length === 0) ? (
+          msg.map((item, index) => (
+            <div
+              className="border-transparent rounded-lg bg-zinc-600 border-white p-3 hover:bg-zinc-700 transition-colors"
+              key={index}
+            >
+              <div className="text-emerald-300 text-sm mb-1">
+                <span className="font-semibold">Receiver:</span>
+                <span className="text-white ml-2">
+                  {item.receiver.slice(0, 6)}...{item.receiver.slice(-4)}
+                </span>
+              </div>
+              <div className="text-yellow-300 text-sm mb-1">
+                <span className="font-semibold">IPFS CID:</span>
+                <span className="text-white ml-2 break-all">{item.cid}</span>
+              </div>
+              <div className="text-blue-300 text-sm mb-2">
+                <span className="font-semibold">Sent:</span>
+                <span className="text-white ml-2">
+                  {convertUTC(item.timestamp)}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleViewDocument(item.cid)}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                >
+                  📄 View Document
+                </button>
+                <a
+                  href={`https://ipfs.io/ipfs/${item.cid}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
+                >
+                  ⬇️ Download
+                </a>
+              </div>
             </div>
-            <div className="text-yellow-300 text-sm mb-1">
-              <span className="font-semibold">IPFS CID:</span>
-              <span className="text-white ml-2 break-all">{item.cid}</span>
-            </div>
-            <div className="text-blue-300 text-sm mb-2">
-              <span className="font-semibold">Sent:</span>
-              <span className="text-white ml-2">
-                {convertUTC(item.timestamp)}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleViewDocument(item.cid)}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
-              >
-                📄 View Document
-              </button>
-              <a
-                href={`https://ipfs.io/ipfs/${item.cid}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
-              >
-                ⬇️ Download
-              </a>
-            </div>
+          ))
+        ) : isLoading ? (
+          <p className="text-gray-400 text-center p-4">
+            ⏳ Loading documents...
+          </p>
+        ) : address ? (
+          <div className="text-center p-4 bg-zinc-700 rounded-lg">
+            <p className="text-gray-400 mb-2">No documents sent yet!</p>
+            <p className="text-xs text-gray-500">
+              Connected: {address.slice(0, 6)}...{address.slice(-4)}
+              <br />
+              Contract: {CONTRACT_ADDRESS.slice(0, 6)}...
+              {CONTRACT_ADDRESS.slice(-4)}
+              <br />
+              Network: {isLoading ? "Checking..." : "Connected"}
+            </p>
+            <p className="text-xs text-yellow-400 mt-2">
+              💡 After sending a document, wait 10-30 seconds for blockchain
+              confirmation, then click Refresh.
+            </p>
           </div>
-        ))
-      ) : isLoading ? (
-        <p className="text-gray-400 text-center p-4">⏳ Loading documents...</p>
-      ) : address ? (
-        <div className="text-center p-4 bg-zinc-700 rounded-lg">
-          <p className="text-gray-400 mb-2">No documents sent yet!</p>
-          <p className="text-xs text-gray-500">
-            Connected: {address.slice(0, 6)}...{address.slice(-4)}
-            <br />
-            Contract: {CONTRACT_ADDRESS.slice(0, 6)}...
-            {CONTRACT_ADDRESS.slice(-4)}
-            <br />
-            Network: {isLoading ? "Checking..." : "Connected"}
+        ) : (
+          <p className="text-yellow-400 text-center p-4">
+            Please connect your wallet to view documents
           </p>
-          <p className="text-xs text-yellow-400 mt-2">
-            💡 After sending a document, wait 10-30 seconds for blockchain
-            confirmation, then click Refresh.
-          </p>
-        </div>
-      ) : (
-        <p className="text-yellow-400 text-center p-4">
-          Please connect your wallet to view documents
-        </p>
-      )}
+        )}
+      </div>
 
       {/* Image/Document Preview Modal */}
       {isPopupOpen && (

@@ -108,6 +108,8 @@ const UploadButton = () => {
   const [patientName, setPatientName] = useState("");
   const [patientId, setPatientId] = useState("");
   const [documentType, setDocumentType] = useState("");
+  const [lastUploadedCID, setLastUploadedCID] = useState(null);
+  const [lastUploadTime, setLastUploadTime] = useState(0);
   const inputRef = useRef();
 
   const handleDragOver = (event) => {
@@ -229,6 +231,8 @@ const UploadButton = () => {
 
         // Upload to IPFS backend on port 5001
         // backend exposes POST /share
+        // NOTE: Same file content = Same CID (this is how IPFS works)
+        // The patient metadata is stored separately in localStorage
         axios
           .post("http://localhost:5001/share", { fileData: f })
           .then(async (res) => {
@@ -245,6 +249,31 @@ const UploadButton = () => {
               `✅ IPFS Upload Complete! CID: ${cid.substring(0, 10)}...`
             );
 
+            // DUPLICATE PREVENTION: Check if we just uploaded this CID recently
+            const now = Date.now();
+            const timeSinceLastUpload = now - lastUploadTime;
+            
+            if (lastUploadedCID === cid && timeSinceLastUpload < 60000) {
+              // Same CID uploaded within last 60 seconds - likely a duplicate
+              console.warn("⚠️ DUPLICATE UPLOAD DETECTED!");
+              console.warn(`CID ${cid} was just uploaded ${timeSinceLastUpload}ms ago`);
+              
+              setIsUploading(false);
+              setUploadProgress("");
+              
+              alert(
+                `⚠️ Duplicate Upload Detected!\n\n` +
+                `This document was already uploaded ${Math.round(timeSinceLastUpload / 1000)} seconds ago.\n\n` +
+                `CID: ${cid.substring(0, 30)}...\n\n` +
+                `Please wait for the previous transaction to complete before uploading again.`
+              );
+              return;
+            }
+            
+            // Store CID and timestamp to prevent duplicates
+            setLastUploadedCID(cid);
+            setLastUploadTime(now);
+
             // Wait a moment to show IPFS success
             await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -254,9 +283,29 @@ const UploadButton = () => {
 
             // Call smart contract with sender and receiver (self-upload, so sender = receiver)
             const data = await addFileToIPFS({ args: [sender, sender, cid] });
-            console.log("Transaction:", data);
+            console.log("✅ Transaction successful! Receipt:", data);
+            console.log("📝 Transaction hash:", data?.receipt?.transactionHash);
+            console.log("⛓️ Block number:", data?.receipt?.blockNumber);
 
-            // Upload metadata to IPFS as well
+            // CRITICAL: Remove from deleted list if it was previously deleted
+            // This fixes the issue where uploading a file with the same CID doesn't show up
+            const deletedDocs = JSON.parse(
+              localStorage.getItem(`deletedDocs_${sender}`) || "[]"
+            );
+            console.log("🗑️ Current deleted docs count:", deletedDocs.length);
+            if (deletedDocs.includes(cid)) {
+              console.log("⚠️ CID was previously deleted, removing from deleted list:", cid);
+              const updatedDeletedDocs = deletedDocs.filter(deletedCid => deletedCid !== cid);
+              localStorage.setItem(
+                `deletedDocs_${sender}`,
+                JSON.stringify(updatedDeletedDocs)
+              );
+              console.log("✅ CID removed from deleted list. Remaining deleted:", updatedDeletedDocs.length);
+            } else {
+              console.log("✅ CID not in deleted list - document will be visible");
+            }
+
+            // Store patient metadata in localStorage
             const metadata = {
               cid: cid,
               patientName: patientName,
@@ -266,56 +315,22 @@ const UploadButton = () => {
               uploader: sender,
             };
 
-            console.log("Uploading metadata to IPFS for CID:", cid, metadata);
+            console.log("Saving metadata for CID:", cid, metadata);
 
-            try {
-              // Convert metadata to base64 for upload
-              const metadataJson = JSON.stringify(metadata, null, 2);
-              const metadataBase64 =
-                "data:application/json;base64," + btoa(metadataJson);
+            // Get existing metadata or initialize
+            const existingMetadata = JSON.parse(
+              localStorage.getItem(`docMetadata_${sender}`) || "{}"
+            );
+            existingMetadata[cid] = metadata;
+            localStorage.setItem(
+              `docMetadata_${sender}`,
+              JSON.stringify(existingMetadata)
+            );
 
-              const metadataResponse = await axios.post(
-                "http://localhost:5001/share",
-                {
-                  fileData: metadataBase64,
-                }
-              );
-
-              const metadataCid = metadataResponse.data.IpfsHash;
-              console.log("Metadata uploaded to IPFS, CID:", metadataCid);
-
-              // Store both in localStorage - document CID maps to metadata CID
-              const existingMetadata = JSON.parse(
-                localStorage.getItem(`docMetadata_${sender}`) || "{}"
-              );
-              existingMetadata[cid] = {
-                ...metadata,
-                metadataCid: metadataCid, // Store the IPFS CID of the metadata
-              };
-              localStorage.setItem(
-                `docMetadata_${sender}`,
-                JSON.stringify(existingMetadata)
-              );
-
-              console.log(
-                "Metadata saved. Total documents with metadata:",
-                Object.keys(existingMetadata).length
-              );
-            } catch (metadataError) {
-              console.error(
-                "Failed to upload metadata to IPFS:",
-                metadataError
-              );
-              // Fallback: store only in localStorage
-              const existingMetadata = JSON.parse(
-                localStorage.getItem(`docMetadata_${sender}`) || "{}"
-              );
-              existingMetadata[cid] = metadata;
-              localStorage.setItem(
-                `docMetadata_${sender}`,
-                JSON.stringify(existingMetadata)
-              );
-            }
+            console.log(
+              "Metadata saved. Total documents with metadata:",
+              Object.keys(existingMetadata).length
+            );
 
             setUploadProgress("✅ Success! Document saved to blockchain!");
 
@@ -331,10 +346,20 @@ const UploadButton = () => {
             setDocumentType("");
 
             alert(
-              `✅ Document uploaded successfully!\n\n👤 Patient: ${patientName}\n📄 IPFS CID: ${cid.substring(
-                0,
-                20
-              )}...\n\n⏳ IMPORTANT: Blockchain confirmation takes 30-60 seconds.\n\n📋 Next Steps:\n1. Wait 1 minute for blockchain confirmation\n2. Go to Dashboard\n3. Click "Refresh Documents" button\n\nYour document will then appear!`
+              `✅ Document uploaded successfully!\n\n` +
+              `👤 Patient: ${patientName}\n` +
+              `📄 Full CID: ${cid}\n` +
+              `🔗 Short CID: ${cid.substring(0, 20)}...\n` +
+              `📝 Transaction Hash: ${data?.receipt?.transactionHash || 'Pending'}\n\n` +
+              `⏳ IMPORTANT: Blockchain confirmation takes 30-60 seconds.\n\n` +
+              `⚠️ DO NOT UPLOAD THIS DOCUMENT AGAIN!\n` +
+              `Uploading the same file multiple times creates duplicate blockchain entries.\n\n` +
+              `📋 Next Steps:\n` +
+              `1. Wait 1 minute for blockchain confirmation\n` +
+              `2. Go to Dashboard\n` +
+              `3. Click "Refresh Documents" button\n\n` +
+              `Your document will then appear!\n\n` +
+              `🔍 Debug: Check browser console for detailed logs`
             );
           })
           .catch((err) => {

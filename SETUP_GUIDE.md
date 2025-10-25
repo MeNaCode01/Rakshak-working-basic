@@ -1,4 +1,4 @@
-# Rakshak 2.0 - Complete Setup Guide
+# Rakshak 3.0 - Complete Setup Guide
 
 This project is a full-stack healthcare management system with:
 

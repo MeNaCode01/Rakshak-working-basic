@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo  Rakshak 2.0 - Stopping All Services
+echo  Rakshak 3.0 - Stopping All Services
 echo ========================================
 echo.
 
